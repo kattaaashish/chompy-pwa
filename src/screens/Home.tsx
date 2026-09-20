@@ -145,45 +145,56 @@ function MealGroup({
         style={{ width: "100%", textAlign: "left", border: "none", background: "transparent", padding: 16 }}
       >
         <div className="between">
-          <span className="body" style={{ fontWeight: 700 }}>
-            {CATEGORY_LABEL[category] ?? category}
-          </span>
           <span className="row" style={{ gap: 8 }}>
-            <span className="body" style={{ fontWeight: 700 }}>
-              {totals.calories} kcal
-            </span>
-            <span aria-hidden style={{ color: "var(--neutral-600)" }}>
+            <span aria-hidden style={{ color: "var(--neutral-600)", fontSize: 12 }}>
               {open ? "▾" : "▸"}
             </span>
+            <span className="body" style={{ fontWeight: 700 }}>
+              {CATEGORY_LABEL[category] ?? category}
+            </span>
+          </span>
+          <span className="body" style={{ fontWeight: 700 }}>
+            {totals.calories} kcal
           </span>
         </div>
-        <div className="body-sm" style={{ marginTop: 4 }}>
+        <div className="body-sm" style={{ marginTop: 4, paddingLeft: 20 }}>
           {allItems.length} {allItems.length === 1 ? "food" : "foods"}
           {macros.length > 0 && "  ·  "}
           {macros.map((m) => `${m.label} ${m.value}${m.unit}`).join(" · ")}
         </div>
       </button>
 
-      {/* Expanded — itemized, grouped by the underlying meal so edits map to it */}
+      {/* Expanded — items nested under the meal; edits map to the underlying meal */}
       {open && (
-        <div style={{ padding: "0 16px 12px" }}>
+        <div style={{ padding: "2px 16px 14px" }}>
           {meals.map((m, mi) => (
-            <div key={m.id || mi} style={{ marginTop: mi === 0 ? 0 : 12 }}>
-              {meals.length > 1 && (
-                <div className="field-label" style={{ margin: "0 0 6px" }}>
-                  Logged {ordinal(mi + 1)}
-                </div>
-              )}
+            <div
+              key={m.id || mi}
+              style={{
+                marginTop: mi === 0 ? 0 : 10,
+                marginLeft: 6,
+                paddingLeft: 12,
+                borderLeft: "2px solid var(--surface)",
+              }}
+            >
               {m.items.map((it, i) => (
                 <ItemRow key={i} item={it} />
               ))}
-              <button
-                className="btn-text"
-                style={{ padding: "6px 0" }}
-                onClick={() => onEdit(m.id)}
-              >
-                Edit →
-              </button>
+              <div style={{ textAlign: "right" }}>
+                <button
+                  onClick={() => onEdit(m.id)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "var(--neutral-600)",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    padding: "6px 0 2px",
+                  }}
+                >
+                  Edit
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -194,8 +205,8 @@ function MealGroup({
 
 function ItemRow({ item }: { item: FoodItem }) {
   return (
-    <div className="between" style={{ padding: "6px 0", borderTop: "1px solid var(--neutral-200)" }}>
-      <span className="body-sm">
+    <div className="between" style={{ padding: "5px 0" }}>
+      <span className="body-sm" style={{ color: "var(--ink)" }}>
         {item.name} <span className="muted">· {item.amount} {item.unit}</span>
       </span>
       {item.calories != null && (
@@ -204,5 +215,3 @@ function ItemRow({ item }: { item: FoodItem }) {
     </div>
   );
 }
-
-const ordinal = (n: number) => (n === 1 ? "1st" : n === 2 ? "2nd" : n === 3 ? "3rd" : `${n}th`);
