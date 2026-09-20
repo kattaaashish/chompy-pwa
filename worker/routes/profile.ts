@@ -23,6 +23,7 @@ profile.get("/profile", requireAuth, async (c) => {
       name: profiles.name,
       dateOfBirth: profiles.dateOfBirth,
       gender: profiles.gender,
+      dietPreference: profiles.dietPreference,
       phone: profiles.phone,
     })
     .from(profiles)
@@ -43,6 +44,7 @@ profile.get("/profile", requireAuth, async (c) => {
     name: p.name ?? "",
     dateOfBirth: p.dateOfBirth ?? "",
     gender: p.gender ?? "",
+    dietPreference: p.dietPreference ?? "veg",
     phone: p.phone ?? "",
     heightCm: m?.heightCm ?? null,
     weightKg: m?.weightKg ?? null,
@@ -70,6 +72,14 @@ profile.post("/profile", requireAuth, async (c) => {
   const v = result.values!;
   const database = db(c.env);
 
+  // Optional diet preference (defaults to keeping the existing value / "veg").
+  const dietPref =
+    body?.dietPreference === "nonveg" ||
+    body?.dietPreference === "veg_egg" ||
+    body?.dietPreference === "veg"
+      ? (body.dietPreference as "veg" | "veg_egg" | "nonveg")
+      : undefined;
+
   try {
     await database
       .update(profiles)
@@ -77,6 +87,7 @@ profile.post("/profile", requireAuth, async (c) => {
         name: v.name,
         dateOfBirth: v.dateOfBirth,
         gender: v.gender,
+        ...(dietPref ? { dietPreference: dietPref } : {}),
         isProfileComplete: true,
         updatedAt: new Date().toISOString(),
       })

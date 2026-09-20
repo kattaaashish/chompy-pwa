@@ -44,6 +44,13 @@ interface GenerateJsonOptions {
   // JSON Schema; every object must set additionalProperties:false + required.
   schema: Record<string, unknown>;
   maxTokens?: number;
+  // Reasoning depth for the call. Extraction/fact stay "low" (fast, cheap);
+  // reasoning-sensitive calls (e.g. recommendations) use "high".
+  effort?: "low" | "medium" | "high" | "max";
+  // Enable adaptive thinking so the model reasons in thinking blocks BEFORE the
+  // schema-constrained JSON — restores reasoning that structured output would
+  // otherwise suppress. (Opus-tier.)
+  thinking?: boolean;
 }
 
 export interface Llm {
@@ -59,20 +66,26 @@ export function createLlm(apiKey: string | undefined, model?: string): Llm {
     async generateJson<T>(opts: GenerateJsonOptions): Promise<T> {
       if (!apiKey) throw new LlmError("Nutrition service is not configured.", false);
 
-      // Low effort keeps these small extraction/estimation calls fast + cheap,
-      // but only send it on models that accept it (Haiku 4.5 400s on `effort`).
+      // `effort` defaults to low (fast/cheap) and is only sent on models that
+      // accept it (Haiku 4.5 400s on `effort`).
       const outputConfig: Record<string, unknown> = {
         format: { type: "json_schema", schema: opts.schema },
       };
-      if (supportsEffort(resolvedModel)) outputConfig.effort = "low";
+      if (supportsEffort(resolvedModel)) outputConfig.effort = opts.effort ?? "low";
 
-      const requestBody = JSON.stringify({
+      const body: Record<string, unknown> = {
         model: resolvedModel,
         max_tokens: opts.maxTokens ?? 2048,
         system: opts.system,
         messages: [{ role: "user", content: opts.content }],
         output_config: outputConfig,
-      });
+      };
+      // Adaptive thinking: reasoning happens in thinking blocks, unconstrained by
+      // the output schema. Only meaningful on Opus-tier models.
+      if (opts.thinking && supportsEffort(resolvedModel)) {
+        body.thinking = { type: "adaptive" };
+      }
+      const requestBody = JSON.stringify(body);
 
       // The Workers→Anthropic egress path intermittently draws a transient
       // 403 "Request not allowed" (abuse protection on the shared egress IPs);

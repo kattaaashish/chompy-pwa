@@ -58,9 +58,12 @@
     "VAPID_PUBLIC": "BGPuwye7snLJg3w-v3B-2x1Tszh5o37oNPcFwa4AkiKo6B4bIwLxAi7f20msNH3HRLlF06qvnHMe3o1UJdyE9BM"
   },
 
-  // Meal-logging reminders (UTC; IST = UTC+5:30):
-  //   30 4  -> 10:00 IST breakfast · 30 11 -> 17:00 IST lunch+snacks · 30 15 -> 21:00 IST dinner
+  // Crons (UTC; IST = UTC+5:30):
+  //   30 4  -> 10:00 IST breakfast reminder
+  //   30 11 -> 17:00 IST lunch + snacks reminder
+  //   30 13 -> 19:00 IST dinner recommendation (gap analysis + LLM)
+  //   30 15 -> 21:00 IST dinner reminder
   "triggers": {
-    "crons": ["30 4 * * *", "30 11 * * *", "30 15 * * *"]
+    "crons": ["30 4 * * *", "30 11 * * *", "30 13 * * *", "30 15 * * *"]
   }
 }

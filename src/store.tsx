@@ -118,6 +118,7 @@ interface Store extends State {
     gender: "male" | "female";
     heightCm: number;
     weightKg: number;
+    dietPreference?: "veg" | "veg_egg" | "nonveg";
   }) => Promise<Record<string, string>>;
   confirmSave: () => Promise<void>;
   retrySave: () => Promise<void>;

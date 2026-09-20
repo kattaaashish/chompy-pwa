@@ -14,10 +14,23 @@ interface Loaded {
   name: string;
   dateOfBirth: string;
   gender: string;
+  dietPreference: string;
   phone: string;
   heightCm: number | null;
   weightKg: number | null;
 }
+
+type Diet = "veg" | "veg_egg" | "nonveg";
+const DIET_OPTIONS: { key: Diet; label: string }[] = [
+  { key: "veg", label: "Veg" },
+  { key: "veg_egg", label: "Veg + Egg" },
+  { key: "nonveg", label: "Non-veg" },
+];
+const DIET_LABEL: Record<string, string> = {
+  veg: "Veg",
+  veg_egg: "Veg + Egg",
+  nonveg: "Non-veg",
+};
 
 export function ProfileView({ onBack }: { onBack: () => void }) {
   const s = useStore();
@@ -28,6 +41,7 @@ export function ProfileView({ onBack }: { onBack: () => void }) {
   const [name, setName] = useState("");
   const [dob, setDob] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "">("");
+  const [diet, setDiet] = useState<Diet>("veg");
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
 
@@ -39,6 +53,7 @@ export function ProfileView({ onBack }: { onBack: () => void }) {
     setName(p.name);
     setDob(p.dateOfBirth);
     setGender((p.gender as "male" | "female") || "");
+    setDiet((p.dietPreference as Diet) || "veg");
     setHeight(p.heightCm != null ? String(p.heightCm) : "");
     setWeight(p.weightKg != null ? String(p.weightKg) : "");
   }
@@ -67,8 +82,17 @@ export function ProfileView({ onBack }: { onBack: () => void }) {
         gender: gender as "male" | "female",
         heightCm: Number(height),
         weightKg: Number(weight),
+        dietPreference: diet,
       });
-      const fresh = { name: name.trim(), dateOfBirth: dob, gender, phone: loaded?.phone ?? "", heightCm: Number(height), weightKg: Number(weight) };
+      const fresh = {
+        name: name.trim(),
+        dateOfBirth: dob,
+        gender,
+        dietPreference: diet,
+        phone: loaded?.phone ?? "",
+        heightCm: Number(height),
+        weightKg: Number(weight),
+      };
       setLoaded(fresh as Loaded);
       setEditing(false);
     } catch (e) {
@@ -148,6 +172,24 @@ export function ProfileView({ onBack }: { onBack: () => void }) {
               </div>
             ) : (
               <ReadRow>{loaded.gender === "female" ? S.genders[1] : loaded.gender === "male" ? S.genders[0] : "—"}</ReadRow>
+            )}
+          </Field>
+
+          <Field label="Food preference">
+            {editing ? (
+              <div className="chip-row">
+                {DIET_OPTIONS.map((o) => (
+                  <button
+                    key={o.key}
+                    className={`chip ${diet === o.key ? "active" : ""}`}
+                    onClick={() => setDiet(o.key)}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <ReadRow>{DIET_LABEL[loaded.dietPreference] || "Veg"}</ReadRow>
             )}
           </Field>
 

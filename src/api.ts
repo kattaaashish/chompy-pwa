@@ -119,6 +119,7 @@ export const api = {
     name: string;
     dateOfBirth: string;
     gender: string;
+    dietPreference: string;
     phone: string;
     heightCm: number | null;
     weightKg: number | null;
@@ -130,6 +131,22 @@ export const api = {
     return await res.json();
   },
 
+  async getRecommendation(
+    token: string,
+  ): Promise<{ date: string; items: { item: string; reason: string }[] | null }> {
+    const res = await fetch("/api/recommendation", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return { date: "", items: null };
+    return await res.json();
+  },
+
+  // Manually run the dinner recommendation now (needs breakfast + lunch logged).
+  async refreshRecommendation(token: string): Promise<{ item: string; reason: string }[]> {
+    const j = await post("/recommendation/refresh", {}, token);
+    return (j.items as { item: string; reason: string }[]) ?? [];
+  },
+
   async upsertProfile(
     token: string,
     p: {
@@ -138,6 +155,7 @@ export const api = {
       gender: "male" | "female";
       heightCm: number;
       weightKg: number;
+      dietPreference?: "veg" | "veg_egg" | "nonveg";
     },
   ): Promise<Record<string, string>> {
     const j = await post(
@@ -149,6 +167,7 @@ export const api = {
         unitSystem: "metric",
         height: p.heightCm,
         weight: p.weightKg,
+        ...(p.dietPreference ? { dietPreference: p.dietPreference } : {}),
       },
       token,
     );

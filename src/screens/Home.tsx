@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { Shell, Mascot, PrimaryButton } from "../components";
 import { S } from "../strings";
 import {
@@ -23,20 +23,40 @@ export function HomeScreen() {
   const [view, setView] = useState<"home" | "myfood" | "profile">("home");
   const [openMealId, setOpenMealId] = useState<string | null>(null);
   const [openCat, setOpenCat] = useState<string | null>(null);
+  const [rec, setRec] = useState<{ item: string; reason: string }[] | null>(null);
+  const [recBusy, setRecBusy] = useState(false);
+  const [recMsg, setRecMsg] = useState<string | null>(null);
 
-  // Always pull a fresh day ledger on load (a hard refresh recreates the store,
-  // so this also covers browser reloads), and again whenever the app regains
-  // focus — so returning to it or reloading never shows stale data.
+  async function suggestNow() {
+    if (!s.token) return;
+    setRecBusy(true);
+    setRecMsg(null);
+    try {
+      setRec(await api.refreshRecommendation(s.token));
+    } catch (e) {
+      setRecMsg(e instanceof ApiError ? e.message : "Couldn't get a suggestion.");
+    } finally {
+      setRecBusy(false);
+    }
+  }
+
+  // Always pull a fresh day ledger + today's recommendation on load (a hard
+  // refresh recreates the store, so this also covers browser reloads), and
+  // again whenever the app regains focus — so it never shows stale data.
   useEffect(() => {
-    void s.refreshDay();
-    const refresh = () => {
-      if (document.visibilityState === "visible") void s.refreshDay();
+    const load = () => {
+      void s.refreshDay();
+      if (s.token) api.getRecommendation(s.token).then((r) => setRec(r.items)).catch(() => {});
     };
-    document.addEventListener("visibilitychange", refresh);
-    window.addEventListener("focus", refresh);
+    load();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
     return () => {
-      document.removeEventListener("visibilitychange", refresh);
-      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -92,6 +112,38 @@ export function HomeScreen() {
       <div style={{ marginTop: 18 }}>
         <PrimaryButton onClick={() => s.openLogMeal()}>{S.homeCta}</PrimaryButton>
       </div>
+
+      {rec && rec.length > 0 ? (
+        <div
+          className="card"
+          style={{ marginTop: 14, background: "var(--sage-tint)", boxShadow: "var(--shadow-sm)" }}
+        >
+          <div className="kicker" style={{ color: "var(--sage-deep)", marginBottom: 8 }}>
+            Tonight's idea 🍽️
+          </div>
+          <div className="stack" style={{ marginTop: 0 }}>
+            {rec.map((r, i) => (
+              <div key={i}>
+                <div className="body" style={{ fontWeight: 700 }}>
+                  {r.item}
+                </div>
+                {r.reason && <div className="body-sm">{r.reason}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ marginTop: 14 }}>
+          <button className="btn-secondary" onClick={suggestNow} disabled={recBusy}>
+            <span>{recBusy ? "Thinking of ideas…" : "Get tonight's dinner idea 🍽️"}</span>
+          </button>
+          {recMsg && (
+            <p className="body-sm" style={{ marginTop: 6 }}>
+              {recMsg}
+            </p>
+          )}
+        </div>
+      )}
 
       <button
         className="card between"

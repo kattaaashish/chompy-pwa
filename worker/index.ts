@@ -11,9 +11,11 @@ import { profile } from "./routes/profile";
 import { mealRoutes } from "./routes/meals";
 import { nutrition } from "./routes/nutrition";
 import { push } from "./routes/push";
+import { recommendation } from "./routes/recommendation";
 import { db } from "./db/client";
 import { pushSubscriptions } from "./db/schema";
 import { sendPush } from "./lib/webpush";
+import { runDailyRecommendations } from "./lib/recommend";
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
@@ -26,6 +28,7 @@ api.route("/", profile);
 api.route("/", mealRoutes);
 api.route("/", nutrition);
 api.route("/", push);
+api.route("/", recommendation);
 api.get("/health", (c) => c.json({ ok: true }));
 
 app.route("/api", api);
@@ -79,6 +82,11 @@ async function sendReminders(env: Env, reminder: { title: string; body: string }
 export default {
   fetch: app.fetch,
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    // 19:00 IST: dinner recommendations (gap analysis + LLM). Others: reminders.
+    if (controller.cron === "30 13 * * *") {
+      ctx.waitUntil(runDailyRecommendations(env));
+      return;
+    }
     const reminder = reminderForCron(controller.cron);
     if (reminder) ctx.waitUntil(sendReminders(env, reminder));
   },

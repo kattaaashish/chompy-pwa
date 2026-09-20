@@ -26,6 +26,10 @@ export const profiles = sqliteTable("profiles", {
   name: text("name"),
   dateOfBirth: text("date_of_birth"), // 'YYYY-MM-DD'
   gender: text("gender", { enum: ["male", "female"] }),
+  // Dietary preference, used to constrain dinner recommendations.
+  dietPreference: text("diet_preference", { enum: ["veg", "veg_egg", "nonveg"] })
+    .notNull()
+    .default("veg"),
   isVerified: integer("is_verified", { mode: "boolean" }).notNull().default(false),
   isProfileComplete: integer("is_profile_complete", { mode: "boolean" })
     .notNull()
@@ -86,6 +90,27 @@ export const meals = sqliteTable(
       t.profileId,
       t.clientToken,
     ),
+  }),
+);
+
+// The daily dinner recommendation (one per profile per IST day). Computed by the
+// 7pm cron; shown as a Home card and pushed as a notification.
+export const recommendations = sqliteTable(
+  "recommendations",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    date: text("date").notNull(), // IST 'YYYY-MM-DD'
+    items: text("items", { mode: "json" })
+      .notNull()
+      .$type<{ item: string; reason: string }[]>()
+      .default([]),
+    createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (t) => ({
+    profileDateKey: uniqueIndex("recommendations_profile_date_key").on(t.profileId, t.date),
   }),
 );
 
