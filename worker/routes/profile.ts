@@ -2,7 +2,7 @@
 // stable identity fields, and writes the first body measurement.
 
 import { Hono } from "hono";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { Env, Vars } from "../lib/env";
 import { apiError } from "../lib/http";
 import { requireAuth } from "../lib/auth";
@@ -11,6 +11,43 @@ import { bodyMeasurements, profiles } from "../db/schema";
 import { validateProfile } from "../../shared/validation";
 
 export const profile = new Hono<{ Bindings: Env; Variables: Vars }>();
+
+// Read the current profile + latest body measurement, to populate the profile
+// view/edit screen.
+profile.get("/profile", requireAuth, async (c) => {
+  const userId = c.get("userId");
+  const database = db(c.env);
+
+  const p = await database
+    .select({
+      name: profiles.name,
+      dateOfBirth: profiles.dateOfBirth,
+      gender: profiles.gender,
+      phone: profiles.phone,
+    })
+    .from(profiles)
+    .where(eq(profiles.id, userId))
+    .get();
+
+  if (!p) return apiError(c, "not_found", "Profile not found.", 404);
+
+  const m = await database
+    .select({ heightCm: bodyMeasurements.heightCm, weightKg: bodyMeasurements.weightKg })
+    .from(bodyMeasurements)
+    .where(eq(bodyMeasurements.profileId, userId))
+    .orderBy(desc(bodyMeasurements.measuredAt))
+    .limit(1)
+    .get();
+
+  return c.json({
+    name: p.name ?? "",
+    dateOfBirth: p.dateOfBirth ?? "",
+    gender: p.gender ?? "",
+    phone: p.phone ?? "",
+    heightCm: m?.heightCm ?? null,
+    weightKg: m?.weightKg ?? null,
+  });
+});
 
 profile.post("/profile", requireAuth, async (c) => {
   const userId = c.get("userId");

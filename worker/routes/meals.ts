@@ -249,6 +249,8 @@ mealRoutes.post("/meal/log", requireAuth, async (c) => {
   const category = body.category as "breakfast" | "lunch" | "dinner" | "snacks";
   const clientToken =
     typeof body?.clientToken === "string" && body.clientToken ? body.clientToken : null;
+  const photoPath =
+    typeof body?.photoPath === "string" && body.photoPath ? body.photoPath : null;
   const loggedAt =
     typeof body?.loggedAt === "string" && !Number.isNaN(Date.parse(body.loggedAt))
       ? new Date(body.loggedAt).toISOString()
@@ -268,6 +270,7 @@ mealRoutes.post("/meal/log", requireAuth, async (c) => {
         totalCalories: totals.calories,
         totalNutrients: totals.nutrients,
         clientToken,
+        photoPath,
       })
       .run();
   } catch (e) {
@@ -342,6 +345,7 @@ function shapeMeal(
     logged_at: m.loggedAt,
     total_calories: m.totalCalories,
     total_nutrients: m.totalNutrients ?? [],
+    photo_path: m.photoPath ?? null,
     items: its
       .slice()
       .sort((a, b) => a.position - b.position)

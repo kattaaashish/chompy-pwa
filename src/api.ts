@@ -115,6 +115,21 @@ export const api = {
     return j.stage as string;
   },
 
+  async getProfile(token: string): Promise<{
+    name: string;
+    dateOfBirth: string;
+    gender: string;
+    phone: string;
+    heightCm: number | null;
+    weightKg: number | null;
+  }> {
+    const res = await fetch("/api/profile", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new ApiError("server_error", "Couldn't load your profile.", true);
+    return await res.json();
+  },
+
   async upsertProfile(
     token: string,
     p: {
@@ -236,6 +251,7 @@ export const api = {
     category: string,
     items: FoodItem[],
     clientToken: string,
+    photoPath?: string | null,
   ): Promise<void> {
     await post(
       "/meal/log",
@@ -249,9 +265,20 @@ export const api = {
           nutrients: i.nutrients,
         })),
         clientToken,
+        photoPath: photoPath ?? null,
       },
       token,
     );
+  },
+
+  // Fetch a meal photo (owner-only endpoint needs the bearer token, so <img>
+  // can't load it directly) and return an object URL for display.
+  async fetchPhoto(token: string, photoPath: string): Promise<string> {
+    const res = await fetch(`/api/photo/${photoPath}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`photo ${res.status}`);
+    return URL.createObjectURL(await res.blob());
   },
 };
 

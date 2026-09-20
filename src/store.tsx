@@ -47,6 +47,7 @@ interface State {
 
   food: FoodScreen;
   reviewItems: FoodItem[];
+  photoPath: string | null; // R2 key of the plate photo for the in-progress meal
   category: string; // lowercase backend category
   extractedCount: number;
   savedCategory: string;
@@ -69,6 +70,7 @@ const initial: State = {
   busyError: null,
   food: "none",
   reviewItems: [],
+  photoPath: null,
   category: "snacks",
   extractedCount: 0,
   savedCategory: "",
@@ -110,6 +112,13 @@ interface Store extends State {
   setCategory: (cat: string) => void;
   estimateItem: (name: string, amount: number, unit: string) => Promise<FoodItem>;
   updateMeal: (mealId: string, category: string, items: FoodItem[]) => Promise<void>;
+  saveProfile: (p: {
+    name: string;
+    dateOfBirth: string;
+    gender: "male" | "female";
+    heightCm: number;
+    weightKg: number;
+  }) => Promise<Record<string, string>>;
   confirmSave: () => Promise<void>;
   retrySave: () => Promise<void>;
   showSaved: () => void;
@@ -232,7 +241,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // ── Food flow ──
       openLogMeal() {
         saveTokenRef.current = null; // fresh meal -> fresh idempotency key
-        set({ food: "mode", reviewItems: [], busyError: null });
+        set({ food: "mode", reviewItems: [], photoPath: null, busyError: null });
       },
       chooseType() {
         set({ food: "text" });
@@ -246,6 +255,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           set({
             food: "review",
             reviewItems: r.items,
+            photoPath: null, // typed meal: no photo
             category: r.defaultCategory,
             extractedCount: r.items.length,
           });
@@ -263,6 +273,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           set({
             food: "review",
             reviewItems: r.items,
+            photoPath: r.photoPath ?? null,
             category: r.defaultCategory,
             extractedCount: r.items.length,
           });
@@ -291,13 +302,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         await api.mealUpdate(t, mealId, category, items);
         await loadDay(); // refresh the ledger so Home reflects the edit
       },
+      async saveProfile(p) {
+        const t = tok();
+        if (!t) throw ApiError.network();
+        const warnings = await api.upsertProfile(t, p);
+        set({ name: p.name }); // keep the greeting in sync
+        await loadDay(); // requirement depends on age/weight
+        return warnings;
+      },
       async confirmSave() {
         const t = tok();
         if (!t) return;
         saveTokenRef.current = saveTokenRef.current ?? crypto.randomUUID();
         set({ food: "saving" });
         try {
-          await api.mealLog(t, state.category, state.reviewItems, saveTokenRef.current);
+          await api.mealLog(
+            t,
+            state.category,
+            state.reviewItems,
+            saveTokenRef.current,
+            state.photoPath,
+          );
           // Fun fact (never a hard failure).
           let fact = "";
           try {

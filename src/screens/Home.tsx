@@ -12,13 +12,14 @@ import {
 } from "../models";
 import { MyFood } from "./MyFood";
 import { MealDetail } from "./MealDetail";
+import { ProfileView } from "./ProfileView";
 
 // The macros shown in each meal's collapsed summary line.
 const SUMMARY_MACROS = ["protein", "carbohydrates", "fat"];
 
 export function HomeScreen() {
   const s = useStore();
-  const [view, setView] = useState<"home" | "myfood">("home");
+  const [view, setView] = useState<"home" | "myfood" | "profile">("home");
   const [openMealId, setOpenMealId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -28,6 +29,7 @@ export function HomeScreen() {
   }, []);
 
   if (view === "myfood") return <MyFood onBack={() => setView("home")} />;
+  if (view === "profile") return <ProfileView onBack={() => setView("home")} />;
 
   const meals = s.day?.meals ?? [];
 
@@ -65,9 +67,14 @@ export function HomeScreen() {
             </h1>
           </div>
         </div>
-        <button className="btn-text" onClick={() => s.logout()}>
-          Sign out
-        </button>
+        <div className="row" style={{ gap: 14 }}>
+          <button className="btn-text" onClick={() => setView("profile")}>
+            Profile
+          </button>
+          <button className="btn-text" onClick={() => s.logout()}>
+            Sign out
+          </button>
+        </div>
       </div>
 
       <p className="body" style={{ marginTop: 14 }}>
@@ -186,13 +193,13 @@ function MealGroup({
                   style={{
                     background: "none",
                     border: "none",
-                    color: "var(--neutral-600)",
-                    fontSize: 13,
-                    fontWeight: 500,
+                    color: "var(--accent-deep)",
+                    fontSize: 15,
+                    fontWeight: 700,
                     padding: "6px 0 2px",
                   }}
                 >
-                  Edit
+                  Edit →
                 </button>
               </div>
             </div>

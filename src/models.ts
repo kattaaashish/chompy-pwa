@@ -24,6 +24,7 @@ export interface LoggedMeal {
   id: string; // meal id — needed to edit a saved meal
   category: string; // breakfast | lunch | dinner | snacks
   items: FoodItem[];
+  photoPath?: string | null; // R2 key of the plate photo (photo mode only)
 }
 
 export interface DailyNeeds {
@@ -184,6 +185,7 @@ export function parseDay(j: any): DayLedger {
     meals: (j.meals ?? []).map((m: any) => ({
       id: m.id ?? "",
       category: m.category ?? "",
+      photoPath: m.photo_path ?? null,
       items: (m.items ?? []).map((i: any) => ({
         name: i.name ?? "",
         amount: i.quantity?.amount ?? 0,

@@ -74,6 +74,8 @@ export const meals = sqliteTable(
       .default([]),
     // Idempotency key so a retried save doesn't create a duplicate meal.
     clientToken: text("client_token"),
+    // R2 key of the plate photo (photo mode only); null for typed meals.
+    photoPath: text("photo_path"),
     createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
   },
   (t) => ({

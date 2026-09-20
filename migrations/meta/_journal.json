@@ -8,6 +8,13 @@
       "when": 1789892573808,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1789900364636,
+      "tag": "0001_meal_photo_path",
+      "breakpoints": true
     }
   ]
 }

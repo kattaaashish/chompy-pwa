@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../store";
-import { ApiError } from "../api";
+import { api, ApiError } from "../api";
 import { Shell, PrimaryButton, ErrorNote } from "../components";
 import { S } from "../strings";
 import { CATEGORY_KEYS, initialOf, type FoodItem, type LoggedMeal } from "../models";
@@ -62,6 +62,27 @@ export function MealDetail({ meal, onBack }: { meal: LoggedMeal; onBack: () => v
   const [estimating, setEstimating] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+
+  // Load the original plate photo (photo mode meals only). The endpoint is
+  // owner-only and needs the bearer token, so fetch it and use an object URL.
+  useEffect(() => {
+    if (!meal.photoPath || !s.token) return;
+    let url: string | null = null;
+    let alive = true;
+    api
+      .fetchPhoto(s.token, meal.photoPath)
+      .then((u) => {
+        url = u;
+        if (alive) setPhotoUrl(u);
+        else URL.revokeObjectURL(u);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [meal.photoPath, s.token]);
 
   const totals = mealTotals(items);
 
@@ -139,6 +160,22 @@ export function MealDetail({ meal, onBack }: { meal: LoggedMeal; onBack: () => v
           <span style={{ width: 44 }} />
         )}
       </div>
+
+      {/* Original plate photo (photo-mode meals) */}
+      {photoUrl && (
+        <img
+          src={photoUrl}
+          alt="Your meal"
+          style={{
+            width: "100%",
+            maxHeight: 240,
+            objectFit: "cover",
+            borderRadius: "var(--radius-card)",
+            marginTop: 16,
+            boxShadow: "var(--shadow-sm)",
+          }}
+        />
+      )}
 
       {/* Category picker (edit mode only) */}
       {editing && (

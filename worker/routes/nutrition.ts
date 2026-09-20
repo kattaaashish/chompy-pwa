@@ -75,6 +75,7 @@ nutrition.post("/nutrition/day", requireAuth, async (c) => {
     logged_at: m.loggedAt,
     total_calories: m.totalCalories,
     total_nutrients: m.totalNutrients ?? [],
+    photo_path: m.photoPath ?? null,
     items: shapeItems(itemsByMeal.get(m.id) ?? []),
   }));
 
