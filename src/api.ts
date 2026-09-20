@@ -142,8 +142,9 @@ export const api = {
   },
 
   // Manually run the dinner recommendation now (needs breakfast + lunch logged).
+  // Retries on a fresh request to ride out the intermittent Workers-egress 403.
   async refreshRecommendation(token: string): Promise<{ item: string; reason: string }[]> {
-    const j = await post("/recommendation/refresh", {}, token);
+    const j = await post("/recommendation/refresh", {}, token, 3);
     return (j.items as { item: string; reason: string }[]) ?? [];
   },
 
