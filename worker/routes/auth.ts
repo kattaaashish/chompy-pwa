@@ -15,6 +15,7 @@ import {
   consumeChallenge,
   debugEnabled,
   generateCode,
+  isMasterOtp,
   sendOtp,
   storeChallenge,
   verifyChallenge,
@@ -62,7 +63,10 @@ auth.post("/auth/verify-otp", async (c) => {
     return apiError(c, "code_invalid", "Enter the 6-digit code.", 400);
   }
 
-  const bypass = debugEnabled(c.env) && code === DEBUG_BYPASS_CODE;
+  // Bypass the code check when: (a) the configured master OTP is entered (works
+  // in any environment), or (b) OTP_DEBUG is on and the dev master code is used.
+  const bypass =
+    isMasterOtp(c.env, code) || (debugEnabled(c.env) && code === DEBUG_BYPASS_CODE);
   let hadChallenge = false;
 
   if (!bypass) {

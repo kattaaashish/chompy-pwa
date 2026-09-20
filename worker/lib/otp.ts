@@ -15,6 +15,14 @@ export function debugEnabled(env: Env): boolean {
   return env.OTP_DEBUG === "true";
 }
 
+// A master OTP bypasses the code check for ANY phone, regardless of OTP_DEBUG.
+// Configured via the MASTER_OTP var so the value isn't baked into logic. It's a
+// shared password: anyone with it + the URL can sign in as any number.
+export function isMasterOtp(env: Env, code: string): boolean {
+  const master = env.MASTER_OTP;
+  return typeof master === "string" && master.length > 0 && code === master;
+}
+
 export function generateCode(): string {
   const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
   return n.toString().padStart(6, "0");

@@ -48,6 +48,10 @@ Claude for extraction/estimation. One Worker serves the PWA (ASSETS binding) and
   in a ref so retries reuse it).
 - `OTP_DEBUG=true` (dev only): master code `987654` verifies any number and the
   real code is echoed. Never set in production.
+- **`MASTER_OTP` var** (currently `123456`, set in prod): verifies ANY phone with
+  that code in any environment — the family's login while SMS is stubbed. It's a
+  shared password; anyone with it + the URL signs in as any number. Handled in
+  `worker/lib/otp.ts` (`isMasterOtp`) + `routes/auth.ts`. Remove the var to disable.
 
 ## Run / deploy
 See README. Local: `npm i && npm run db:migrate:local && npm run build && npm run
