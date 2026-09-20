@@ -9,7 +9,15 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // Custom service worker (injectManifest) so we can handle Web Push +
+      // notification clicks for meal reminders, on top of Workbox precaching.
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
+      },
       includeAssets: ["icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"],
       manifest: {
         name: "Chompy",
@@ -25,11 +33,6 @@ export default defineConfig({
           { src: "icons/icon-512.png", sizes: "512x512", type: "image/png" },
           { src: "icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
         ],
-      },
-      workbox: {
-        // Cache the app shell; API calls always hit the network.
-        globPatterns: ["**/*.{js,css,html,png,svg,woff2}"],
-        navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],

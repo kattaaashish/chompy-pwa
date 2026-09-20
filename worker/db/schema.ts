@@ -89,6 +89,25 @@ export const meals = sqliteTable(
   }),
 );
 
+// Web Push subscriptions for meal-logging reminders. One row per browser/device
+// endpoint; re-subscribing upserts on the unique endpoint.
+export const pushSubscriptions = sqliteTable(
+  "push_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    profileId: text("profile_id")
+      .notNull()
+      .references(() => profiles.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull().unique(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+  },
+  (t) => ({
+    profileIdx: index("push_subscriptions_profile_idx").on(t.profileId),
+  }),
+);
+
 // Confirmed items of a meal. Quantity = positive amount + free-text unit.
 export const mealItems = sqliteTable(
   "meal_items",

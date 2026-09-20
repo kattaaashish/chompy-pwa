@@ -3,6 +3,12 @@ import { useStore } from "../store";
 import { api, ApiError } from "../api";
 import { Shell, PrimaryButton, ErrorNote } from "../components";
 import { S } from "../strings";
+import {
+  disableReminders,
+  enableReminders,
+  reminderState,
+  type ReminderState,
+} from "../push";
 
 interface Loaded {
   name: string;
@@ -172,6 +178,8 @@ export function ProfileView({ onBack }: { onBack: () => void }) {
 
       <ErrorNote>{general}</ErrorNote>
 
+      {!editing && <RemindersCard />}
+
       {editing && (
         <>
           <div className="grow" style={{ minHeight: 16 }} />
@@ -181,6 +189,85 @@ export function ProfileView({ onBack }: { onBack: () => void }) {
         </>
       )}
     </Shell>
+  );
+}
+
+// Meal-reminder push toggle. Times are fixed on the server (10am breakfast,
+// 5pm lunch+snacks, 9pm dinner, IST).
+function RemindersCard() {
+  const s = useStore();
+  const [state, setState] = useState<ReminderState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    reminderState().then(setState).catch(() => setState("unsupported"));
+  }, []);
+
+  async function toggle() {
+    if (!s.token) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      if (state === "on") {
+        await disableReminders(s.token);
+        setState("off");
+      } else {
+        await enableReminders(s.token);
+        setState("on");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Something went wrong.");
+      setState(await reminderState().catch(() => state));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section style={{ marginTop: 28 }}>
+      <h2 className="title" style={{ fontSize: 18 }}>
+        Meal reminders
+      </h2>
+      <p className="body-sm" style={{ marginTop: 4 }}>
+        Breakfast at 10am · lunch & snacks at 5pm · dinner at 9pm.
+      </p>
+
+      {state === "unsupported" && (
+        <p className="body-sm" style={{ marginTop: 10 }}>
+          Reminders aren’t supported in this browser. On iPhone/iPad, add Chompy to your
+          Home Screen and open it from there.
+        </p>
+      )}
+      {state === "denied" && (
+        <p className="body-sm" style={{ marginTop: 10, color: "var(--accent-deep)" }}>
+          Notifications are blocked. Enable them for Chompy in your browser/device settings.
+        </p>
+      )}
+      {(state === "on" || state === "off") && (
+        <button
+          className={state === "on" ? "btn-secondary" : "btn-primary"}
+          style={{ marginTop: 12 }}
+          onClick={toggle}
+          disabled={busy}
+        >
+          <span>
+            {busy
+              ? "…"
+              : state === "on"
+                ? "Turn off reminders"
+                : "Turn on meal reminders"}
+          </span>
+          {state !== "on" && <span aria-hidden>→</span>}
+        </button>
+      )}
+      {state === "on" && (
+        <p className="body-sm" style={{ marginTop: 8, color: "var(--sage-deep)" }}>
+          Reminders are on ✓
+        </p>
+      )}
+      <ErrorNote>{err}</ErrorNote>
+    </section>
   );
 }
 

@@ -271,6 +271,20 @@ export const api = {
     );
   },
 
+  async pushKey(): Promise<{ key: string }> {
+    const res = await fetch("/api/push/key");
+    if (!res.ok) return { key: "" };
+    return await res.json();
+  },
+
+  async pushSubscribe(token: string, subscription: unknown): Promise<void> {
+    await post("/push/subscribe", { subscription }, token);
+  },
+
+  async pushUnsubscribe(token: string, endpoint: string): Promise<void> {
+    await post("/push/unsubscribe", { endpoint }, token);
+  },
+
   // Fetch a meal photo (owner-only endpoint needs the bearer token, so <img>
   // can't load it directly) and return an object URL for display.
   async fetchPhoto(token: string, photoPath: string): Promise<string> {

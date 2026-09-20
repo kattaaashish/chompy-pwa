@@ -22,6 +22,13 @@ export interface Env {
   // knows it + the URL can sign in as any number, so treat it as a shared
   // password. Unset it to disable.
   MASTER_OTP?: string;
+
+  // Web Push (VAPID). PUBLIC is client-facing; the JWK d/x/y sign the VAPID JWT.
+  VAPID_PUBLIC?: string;
+  VAPID_PRIVATE_D?: string;
+  VAPID_PUBLIC_X?: string;
+  VAPID_PUBLIC_Y?: string;
+  VAPID_SUBJECT?: string;
 }
 
 // Hono context variables set by middleware.

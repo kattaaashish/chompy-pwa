@@ -15,6 +15,13 @@
       "when": 1789900364636,
       "tag": "0001_meal_photo_path",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1789901312149,
+      "tag": "0002_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }

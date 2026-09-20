@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../store";
+import { api } from "../api";
 import { Shell, Mascot, PrimaryButton } from "../components";
 import { S } from "../strings";
 import {
@@ -21,10 +22,22 @@ export function HomeScreen() {
   const s = useStore();
   const [view, setView] = useState<"home" | "myfood" | "profile">("home");
   const [openMealId, setOpenMealId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [openCat, setOpenCat] = useState<string | null>(null);
 
+  // Always pull a fresh day ledger on load (a hard refresh recreates the store,
+  // so this also covers browser reloads), and again whenever the app regains
+  // focus — so returning to it or reloading never shows stale data.
   useEffect(() => {
-    if (!s.day) void s.refreshDay();
+    void s.refreshDay();
+    const refresh = () => {
+      if (document.visibilityState === "visible") void s.refreshDay();
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -49,32 +62,27 @@ export function HomeScreen() {
     meals: meals.filter((m) => m.category === cat),
   })).filter((g) => g.meals.length > 0);
 
-  const toggle = (cat: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(cat) ? next.delete(cat) : next.add(cat);
-      return next;
-    });
+  // Accordion: opening one meal group collapses the others.
+  const toggle = (cat: string) => setOpenCat((prev) => (prev === cat ? null : cat));
 
   return (
     <Shell>
       <div className="between">
-        <div className="row">
+        {/* Tap the Chompy icon / greeting to open the profile. */}
+        <button
+          className="row"
+          onClick={() => setView("profile")}
+          style={{ background: "none", border: "none", padding: 0, gap: 12, textAlign: "left" }}
+          aria-label="Open profile"
+        >
           <Mascot size={52} />
-          <div>
-            <h1 className="title" style={{ fontSize: 24 }}>
-              {S.greeting(s.name)}
-            </h1>
-          </div>
-        </div>
-        <div className="row" style={{ gap: 14 }}>
-          <button className="btn-text" onClick={() => setView("profile")}>
-            Profile
-          </button>
-          <button className="btn-text" onClick={() => s.logout()}>
-            Sign out
-          </button>
-        </div>
+          <h1 className="title" style={{ fontSize: 24 }}>
+            {S.greeting(s.name)}
+          </h1>
+        </button>
+        <button className="btn-text" onClick={() => s.logout()}>
+          Sign out
+        </button>
       </div>
 
       <p className="body" style={{ marginTop: 14 }}>
@@ -114,7 +122,7 @@ export function HomeScreen() {
               key={cat}
               category={cat}
               meals={catMeals}
-              open={expanded.has(cat)}
+              open={openCat === cat}
               onToggle={() => toggle(cat)}
               onEdit={(id) => setOpenMealId(id)}
             />
@@ -184,6 +192,7 @@ function MealGroup({
                 borderLeft: "2px solid var(--surface)",
               }}
             >
+              {m.photoPath && <MealPhoto photoPath={m.photoPath} />}
               {m.items.map((it, i) => (
                 <ItemRow key={i} item={it} />
               ))}
@@ -207,6 +216,44 @@ function MealGroup({
         </div>
       )}
     </div>
+  );
+}
+
+// Thumbnail of a photo-logged meal. The photo endpoint is owner-only (needs the
+// bearer token), so fetch it and show via an object URL.
+function MealPhoto({ photoPath }: { photoPath: string }) {
+  const s = useStore();
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!s.token) return;
+    let u: string | null = null;
+    let alive = true;
+    api
+      .fetchPhoto(s.token, photoPath)
+      .then((x) => {
+        u = x;
+        if (alive) setUrl(x);
+        else URL.revokeObjectURL(x);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      if (u) URL.revokeObjectURL(u);
+    };
+  }, [photoPath, s.token]);
+  if (!url) return null;
+  return (
+    <img
+      src={url}
+      alt="Your meal"
+      style={{
+        width: "100%",
+        maxHeight: 160,
+        objectFit: "cover",
+        borderRadius: 14,
+        margin: "4px 0 8px",
+      }}
+    />
   );
 }
 

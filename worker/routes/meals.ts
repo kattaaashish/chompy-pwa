@@ -329,6 +329,7 @@ mealRoutes.post("/meal/log", requireAuth, async (c) => {
       logged_at: loggedAt,
       total_calories: totals.calories,
       total_nutrients: totals.nutrients,
+      photo_path: photoPath,
       items: values.map((v, i) => ({ ...v, position: i })),
     },
     day,
