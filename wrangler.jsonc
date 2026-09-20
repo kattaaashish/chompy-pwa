@@ -1,0 +1,49 @@
+{
+  // Chompy — one Worker serves the PWA (static assets) and the API (/api/*).
+  // All state lives on Cloudflare: D1 (SQLite), R2 (meal photos), KV (OTP challenges).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chompy-pwa",
+  "main": "worker/index.ts",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // The built React PWA. `single-page-application` makes unknown non-asset paths
+  // fall back to index.html so the client state-machine app always boots.
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "chompy-db",
+      "database_id": "2899bdd6-b3b0-4339-bc4d-61e0875f4e1e",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "chompy-meal-photos"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "OTP_KV",
+      "id": "15ad0a213b024e448e973e2bb1264e52"
+    }
+  ],
+
+  "vars": {
+    // Non-secret runtime config. Secrets (ANTHROPIC_API_KEY, JWT_SECRET,
+    // OTP_PEPPER) are set via `wrangler secret put` / .dev.vars locally.
+    "CHOMPY_LLM_MODEL": "claude-opus-4-8",
+    "OTP_DEBUG": "false"
+  }
+}

@@ -1,0 +1,8 @@
+# Local secrets for `wrangler dev` (copy to .dev.vars; git-ignored).
+# In production set these with `wrangler secret put <NAME>`.
+ANTHROPIC_API_KEY=sk-ant-...
+JWT_SECRET=some-long-random-string-change-me
+OTP_PEPPER=another-random-string-change-me
+# OTP_DEBUG=true echoes the OTP code in the response AND accepts master code 987654
+# for any number. NEVER enable in production.
+OTP_DEBUG=true
