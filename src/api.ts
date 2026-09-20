@@ -27,7 +27,7 @@ export class ApiError extends Error {
 
 const BASE = "/api";
 
-async function post<T = any>(
+async function postOnce<T = any>(
   path: string,
   body: unknown,
   token?: string | null,
@@ -63,6 +63,29 @@ async function post<T = any>(
     );
   }
   return json as T;
+}
+
+// Retry retryable failures on a FRESH request. The Workers→Anthropic egress
+// occasionally draws a transient 403 that's correlated within a single Worker
+// invocation, so a new request (new isolate/egress IP) usually succeeds where an
+// in-invocation retry can't. Only used for the idempotent LLM-backed calls.
+async function post<T = any>(
+  path: string,
+  body: unknown,
+  token?: string | null,
+  retries = 0,
+): Promise<T> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await postOnce<T>(path, body, token);
+    } catch (e) {
+      const retryable = e instanceof ApiError && e.retryable;
+      if (!retryable || attempt >= retries) throw e;
+      attempt++;
+      await new Promise((r) => setTimeout(r, 400 * attempt));
+    }
+  }
 }
 
 export interface VerifyResult {
@@ -118,7 +141,7 @@ export const api = {
   },
 
   async mealExtractText(token: string, text: string): Promise<ExtractResult> {
-    const j = await post("/meal/extract", { mode: "text", text }, token);
+    const j = await post("/meal/extract", { mode: "text", text }, token, 3);
     return {
       items: (j.items ?? []).map(itemFromExtract),
       defaultCategory: j.defaultCategory ?? "snacks",
@@ -135,6 +158,7 @@ export const api = {
       "/meal/extract",
       { mode: "photo", image: base64Image, mimeType },
       token,
+      3,
     );
     return {
       items: (j.items ?? []).map(itemFromExtract),
@@ -149,7 +173,7 @@ export const api = {
     amount: number,
     unit: string,
   ): Promise<FoodItem> {
-    const j = await post("/nutrition/estimate", { item: name, quantity: { amount, unit } }, token);
+    const j = await post("/nutrition/estimate", { item: name, quantity: { amount, unit } }, token, 3);
     return {
       name,
       amount,
@@ -179,8 +203,32 @@ export const api = {
       "/meal/fact",
       { items: items.map((i) => `${i.name} ${i.amount} ${i.unit}`.trim()) },
       token,
+      2,
     );
     return (j.fact as string) ?? "";
+  },
+
+  async mealUpdate(
+    token: string,
+    mealId: string,
+    category: string,
+    items: FoodItem[],
+  ): Promise<void> {
+    await post(
+      "/meal/update",
+      {
+        mealId,
+        category,
+        items: items.map((i) => ({
+          name: i.name,
+          quantity: { amount: i.amount, unit: i.unit },
+          calories: i.calories,
+          food_group: i.foodGroup,
+          nutrients: i.nutrients,
+        })),
+      },
+      token,
+    );
   },
 
   async mealLog(

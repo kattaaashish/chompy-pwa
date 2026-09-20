@@ -171,12 +171,27 @@ const ESTIMATION_SCHEMA = {
 // ---------------------------------------------------------------------------
 // Prompts.
 // ---------------------------------------------------------------------------
-const EXTRACTION_SYSTEM =
+// Shared contract for both modalities: the task, the quantity convention, and the
+// output shape. Text and image add their own guidance on top (they fail in
+// opposite ways — text is exact but vague on amount; a photo needs portion
+// estimation and must not invent hidden foods).
+const EXTRACTION_SYSTEM_BASE =
   `You identify the distinct food items in a meal for a nutrition-logging app used in India.
 Return a list of items, each with an approximate quantity expressed the way food is naturally described — a number plus a unit — rather than forced into grams:
 - "amount": a positive number.
 - "unit": how it's counted or measured, e.g. "small banana", "medium rotis", "bowl", "glass", "g", "ml", "piece". Use grams/millilitres only when that's how the food is normally measured (e.g. dal, rice, milk).
-Split a plate into its distinct dishes. If you cannot recognise any food, return an empty items array — do not invent items.`;
+Split a plate into its distinct dishes.`;
+
+// Typed mode: the user described the meal in their own words.
+const EXTRACTION_TEXT_HINT =
+  `The input is the person's own words describing what they ate. Trust the quantities they state (e.g. "2 roti" means amount 2). When a quantity is vague ("some rice", "a little dal"), infer a reasonable single-serving amount rather than a large number. Do not add foods they did not mention. If the text names no food, return an empty items array.`;
+
+// Photo mode: infer dishes and portions from the image.
+const EXTRACTION_IMAGE_HINT =
+  `The input is a photo of a plate. Identify only dishes you can actually see — do not guess at foods that might be hidden or off-frame. Estimate each quantity from visual cues: how full a bowl is, the size of the plate, the number of visible pieces. Tell a main dish apart from a small garnish. If you cannot recognise any food in the photo, return an empty items array — do not invent items.`;
+
+const EXTRACTION_TEXT_SYSTEM = `${EXTRACTION_SYSTEM_BASE}\n${EXTRACTION_TEXT_HINT}`;
+const EXTRACTION_IMAGE_SYSTEM = `${EXTRACTION_SYSTEM_BASE}\n${EXTRACTION_IMAGE_HINT}`;
 
 const NUTRIENT_LIST_TEXT = NUTRIENT_SET.map((n) => `${n.key} (${n.unit})`).join(", ");
 const FOOD_GROUP_LIST_TEXT = FOOD_GROUPS.filter(
@@ -191,6 +206,17 @@ const ESTIMATION_SYSTEM =
 - "food_group": the single food family this item best belongs to, chosen from exactly one of: ${FOOD_GROUP_LIST_TEXT}. Use "other" only when none fit (e.g. water, tea, a mixed dish that isn't dominated by one family).
 - "nutrients": return exactly one entry for every one of these nutrients, using its stated unit, and 0 when the food genuinely contains a negligible amount: ${NUTRIENT_LIST_TEXT}. Values are for the given quantity.
 Estimate reasonably; approximate values are expected.`;
+
+// Appended only on the photo path, where the original plate image is provided
+// alongside the item so portion size is read from pixels, not just the text.
+const ESTIMATION_IMAGE_HINT =
+  `A photo of the meal is included. Use it to judge this item's portion size (how full the serving looks, the size and number of pieces) — the text quantity is only an approximate label.`;
+
+// The original plate photo, threaded into per-item estimation on the photo path.
+export interface MealImage {
+  base64: string;
+  mimeType: string;
+}
 
 // ---------------------------------------------------------------------------
 // Extraction (Stage 1).
@@ -223,7 +249,7 @@ export async function extractItemsFromText(
   text: string,
 ): Promise<{ item: string; quantity: Quantity }[]> {
   const raw = await llm.generateJson<{ items: RawExtractedItem[] }>({
-    system: EXTRACTION_SYSTEM,
+    system: EXTRACTION_TEXT_SYSTEM,
     content: [{ type: "text", text: `The user ate: ${text}` }],
     schema: EXTRACTION_SCHEMA,
   });
@@ -240,7 +266,7 @@ export async function extractItemsFromImage(
     { type: "text", text: "Identify the food items and quantities in this meal." },
   ];
   const raw = await llm.generateJson<{ items: RawExtractedItem[] }>({
-    system: EXTRACTION_SYSTEM,
+    system: EXTRACTION_IMAGE_SYSTEM,
     content,
     schema: EXTRACTION_SCHEMA,
   });
@@ -254,6 +280,7 @@ export async function estimateNutrition(
   llm: Llm,
   item: string,
   quantity: Quantity,
+  image?: MealImage,
 ): Promise<{
   calories: number | null;
   food_group: FoodGroup;
@@ -261,15 +288,26 @@ export async function estimateNutrition(
   estimationFailed: boolean;
 }> {
   try {
+    // Photo path: prepend the plate image and tell the model to read the portion
+    // from it. Text path: text-only, as before.
+    const content: ContentBlock[] = [];
+    if (image) {
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: image.mimeType, data: image.base64 },
+      });
+    }
+    content.push({
+      type: "text",
+      text: `Item: ${item}\nQuantity: ${quantity.amount} ${quantity.unit}`,
+    });
     const raw = await llm.generateJson<{
       calories: number;
       food_group: string;
       nutrients: Nutrient[];
     }>({
-      system: ESTIMATION_SYSTEM,
-      content: [
-        { type: "text", text: `Item: ${item}\nQuantity: ${quantity.amount} ${quantity.unit}` },
-      ],
+      system: image ? `${ESTIMATION_SYSTEM}\n${ESTIMATION_IMAGE_HINT}` : ESTIMATION_SYSTEM,
+      content,
       schema: ESTIMATION_SCHEMA,
     });
     const calories = Number(raw?.calories);
@@ -304,8 +342,9 @@ export async function buildReviewItem(
   llm: Llm,
   item: string,
   quantity: Quantity,
+  image?: MealImage,
 ): Promise<ReviewItem> {
-  const est = await estimateNutrition(llm, item, quantity);
+  const est = await estimateNutrition(llm, item, quantity, image);
   return { item, quantity, ...est };
 }
 

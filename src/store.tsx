@@ -109,6 +109,7 @@ interface Store extends State {
   setReviewItems: (items: FoodItem[]) => void;
   setCategory: (cat: string) => void;
   estimateItem: (name: string, amount: number, unit: string) => Promise<FoodItem>;
+  updateMeal: (mealId: string, category: string, items: FoodItem[]) => Promise<void>;
   confirmSave: () => Promise<void>;
   retrySave: () => Promise<void>;
   showSaved: () => void;
@@ -283,6 +284,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const t = tok();
         if (!t) throw ApiError.network();
         return await api.nutritionEstimate(t, name, amount, unit);
+      },
+      async updateMeal(mealId: string, category: string, items: FoodItem[]) {
+        const t = tok();
+        if (!t) throw ApiError.network();
+        await api.mealUpdate(t, mealId, category, items);
+        await loadDay(); // refresh the ledger so Home reflects the edit
       },
       async confirmSave() {
         const t = tok();

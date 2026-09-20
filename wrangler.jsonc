@@ -43,7 +43,10 @@
   "vars": {
     // Non-secret runtime config. Secrets (ANTHROPIC_API_KEY, JWT_SECRET,
     // OTP_PEPPER) are set via `wrangler secret put` / .dev.vars locally.
+    // Strong model: image extraction + nutrition estimation (quality/vision).
     "CHOMPY_LLM_MODEL": "claude-opus-4-8",
+    // Fast model: text extraction + fun fact (low latency).
+    "CHOMPY_LLM_MODEL_FAST": "claude-haiku-4-5",
     "OTP_DEBUG": "false",
     // Master OTP — verifies any phone with this code while SMS is stubbed.
     // Shared password for the family; anyone with it + the URL can sign in as

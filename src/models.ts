@@ -21,6 +21,7 @@ export interface FoodItem {
 }
 
 export interface LoggedMeal {
+  id: string; // meal id — needed to edit a saved meal
   category: string; // breakfast | lunch | dinner | snacks
   items: FoodItem[];
 }
@@ -181,6 +182,7 @@ export function parseDay(j: any): DayLedger {
     date: j.date ?? "",
     needs: j.requirement ? parseNeeds(j.requirement) : null,
     meals: (j.meals ?? []).map((m: any) => ({
+      id: m.id ?? "",
       category: m.category ?? "",
       items: (m.items ?? []).map((i: any) => ({
         name: i.name ?? "",

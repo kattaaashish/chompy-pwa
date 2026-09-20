@@ -10,7 +10,7 @@ import { apiError } from "../lib/http";
 import { requireAuth } from "../lib/auth";
 import { db } from "../db/client";
 import { mealItems, meals } from "../db/schema";
-import { createLlm } from "../../shared/llm";
+import { createLlm, DEFAULT_FAST_MODEL } from "../../shared/llm";
 import { LlmError } from "../../shared/llm";
 import {
   type FoodGroup,
@@ -35,8 +35,14 @@ const MIME_EXT: Record<string, string> = {
   "image/webp": "webp",
 };
 
-function llmFor(env: Env) {
+// Strong model: image extraction + all nutrition estimation (quality/vision).
+function llmStrong(env: Env) {
   return createLlm(env.ANTHROPIC_API_KEY, env.CHOMPY_LLM_MODEL);
+}
+
+// Fast model: text extraction + fun fact (latency-sensitive, no vision needed).
+function llmFast(env: Env) {
+  return createLlm(env.ANTHROPIC_API_KEY, env.CHOMPY_LLM_MODEL_FAST ?? DEFAULT_FAST_MODEL);
 }
 
 function decodeImage(input: string): { base64: string; bytes: Uint8Array } {
@@ -51,12 +57,14 @@ function decodeImage(input: string): { base64: string; bytes: Uint8Array } {
 // Stage 1 + 2 — entry (photo/typed) => items => per-item estimation => review table.
 mealRoutes.post("/meal/extract", requireAuth, async (c) => {
   const userId = c.get("userId");
-  const llm = llmFor(c.env);
   const body = await c.req.json().catch(() => ({}));
   const mode = body?.mode;
 
   let extracted: { item: string; quantity: { amount: number; unit: string } }[] = [];
   let photoPath: string | undefined;
+  // On the photo path, the plate image is fed into per-item estimation too, so
+  // portions are read from pixels rather than just the extracted text.
+  let estimateImage: { base64: string; mimeType: string } | undefined;
 
   try {
     if (mode === "photo") {
@@ -85,12 +93,24 @@ mealRoutes.post("/meal/extract", requireAuth, async (c) => {
         return apiError(c, "server_error", "Couldn't save the photo.", 500, { retryable: true });
       }
       photoPath = path;
+      estimateImage = { base64, mimeType };
 
-      extracted = await extractItemsFromImage(llm, base64, mimeType);
+      // Image extraction → strong (vision) model.
+      extracted = await extractItemsFromImage(llmStrong(c.env), base64, mimeType);
     } else if (mode === "text") {
       const text = typeof body?.text === "string" ? body.text.trim() : "";
       if (!text) return apiError(c, "validation_failed", "Enter what you ate.", 422);
-      extracted = await extractItemsFromText(llm, text);
+      // Text extraction → fast model (low latency), falling back to the strong
+      // model. The fast model (Haiku) intermittently draws a 403 on the Workers
+      // egress path where the strong model (Opus) is reliable, so this keeps the
+      // latency win in the common case without a user-visible failure.
+      try {
+        extracted = await extractItemsFromText(llmFast(c.env), text);
+      } catch (e) {
+        if (!(e instanceof LlmError)) throw e;
+        console.warn(`[meal-extract] fast model failed, falling back to strong: ${e.message}`);
+        extracted = await extractItemsFromText(llmStrong(c.env), text);
+      }
     } else {
       return apiError(c, "validation_failed", 'mode must be "photo" or "text".', 422);
     }
@@ -102,9 +122,14 @@ mealRoutes.post("/meal/extract", requireAuth, async (c) => {
     return apiError(c, "server_error", "Something went wrong.", 500, { retryable: true });
   }
 
+  // Estimation → strong model, always. On the photo path each item also gets the
+  // plate image so the portion is judged visually.
   let items;
   try {
-    items = await Promise.all(extracted.map((it) => buildReviewItem(llm, it.item, it.quantity)));
+    const strong = llmStrong(c.env);
+    items = await Promise.all(
+      extracted.map((it) => buildReviewItem(strong, it.item, it.quantity, estimateImage)),
+    );
   } catch (e) {
     const message = e instanceof LlmError ? e.message : "Something went wrong.";
     return apiError(c, "server_error", message, 500, {
@@ -139,7 +164,9 @@ mealRoutes.post("/nutrition/estimate", requireAuth, async (c) => {
   }
 
   try {
-    const result = await estimateNutrition(llmFor(c.env), name, { amount, unit });
+    // Manual re-estimate (item added/edited in review) — strong model, text-only
+    // (no image is available at this point).
+    const result = await estimateNutrition(llmStrong(c.env), name, { amount, unit });
     return c.json(result);
   } catch (e) {
     if (e instanceof LlmError) {
@@ -328,6 +355,101 @@ function shapeMeal(
   };
 }
 
+// Edit a saved meal — replace its items (name/quantity + already-estimated
+// nutrition) and recompute the cached totals. Authenticated + owner-checked.
+// The client re-estimates edited items via /nutrition/estimate before saving,
+// so items arrive in the same shape as meal/log.
+mealRoutes.post("/meal/update", requireAuth, async (c) => {
+  const userId = c.get("userId");
+  const database = db(c.env);
+  const body = await c.req.json().catch(() => ({}));
+
+  const mealId = typeof body?.mealId === "string" ? body.mealId : "";
+  if (!mealId) return apiError(c, "validation_failed", "Which meal?", 422);
+
+  // Ownership: only the meal's owner can edit it.
+  const existing = await database
+    .select()
+    .from(meals)
+    .where(and(eq(meals.id, mealId), eq(meals.profileId, userId)))
+    .get();
+  if (!existing) return apiError(c, "not_found", "Meal not found.", 404);
+
+  // Validate the edited items (same rules as meal/log). Category defaults to the
+  // meal's current one if the client didn't send a valid change.
+  const category = isValidCategory(body?.category) ? body.category : existing.category;
+  const rawItems = Array.isArray(body?.items) ? body.items : [];
+  const fieldErrors: Record<string, unknown> = {};
+  if (rawItems.length === 0) fieldErrors.items = "A meal needs at least one item.";
+
+  const values: SavedItem[] = [];
+  const itemErrors: { index: number; name?: string; quantity?: string }[] = [];
+  rawItems.forEach((raw: unknown, index: number) => {
+    const res = validateItem(raw);
+    if (!res.ok) itemErrors.push({ index, ...res.errors });
+    else values.push(res.value!);
+  });
+  if (itemErrors.length > 0) fieldErrors.itemErrors = itemErrors;
+  if (Object.keys(fieldErrors).length > 0) {
+    return c.json(
+      { error: { code: "validation_failed", message: "Some items need attention.", fieldErrors } },
+      422,
+    );
+  }
+
+  const totals = sumNutrition(values);
+
+  try {
+    await database
+      .update(meals)
+      .set({ category, totalCalories: totals.calories, totalNutrients: totals.nutrients })
+      .where(eq(meals.id, mealId))
+      .run();
+    // Replace the item set wholesale (simplest correct edit).
+    await database.delete(mealItems).where(eq(mealItems.mealId, mealId)).run();
+    await database
+      .insert(mealItems)
+      .values(
+        values.map((v, i) => ({
+          id: crypto.randomUUID(),
+          mealId,
+          name: v.name,
+          quantityAmount: v.quantity.amount,
+          quantityUnit: v.quantity.unit,
+          calories: v.calories,
+          nutrients: v.nutrients,
+          foodGroup: v.food_group,
+          position: i,
+        })),
+      )
+      .run();
+  } catch (e) {
+    console.error(`[meal-update] ${e}`);
+    return apiError(c, "server_error", "Couldn't update the meal.", 500, { retryable: true });
+  }
+
+  const day = await computeLedger(database, userId, existing.loggedAt);
+  return c.json({
+    status: "updated",
+    meal: {
+      id: mealId,
+      category,
+      logged_at: existing.loggedAt,
+      total_calories: totals.calories,
+      total_nutrients: totals.nutrients,
+      items: values.map((v, i) => ({
+        name: v.name,
+        quantity: v.quantity,
+        calories: v.calories,
+        food_group: v.food_group,
+        nutrients: v.nutrients,
+        position: i,
+      })),
+    },
+    day,
+  });
+});
+
 // Kid-friendly fun fact. Never a hard failure — falls back to a generic fact.
 const FACT_SYSTEM =
   `You write one fun food fact for a children's meal-logging app in India. The audience is a young child (about 5-9 years old) who just logged their meal.
@@ -359,13 +481,23 @@ mealRoutes.post("/meal/fact", requireAuth, async (c) => {
     return apiError(c, "validation_failed", "Add at least one food item.", 422);
   }
 
+  // Fun fact → fast model, falling back to the strong model (same Workers-egress
+  // flakiness as extraction), then to a generic fact so the reward screen never
+  // breaks.
+  const factReq = {
+    system: FACT_SYSTEM,
+    content: [{ type: "text" as const, text: `The child just ate: ${items.join(", ")}` }],
+    schema: FACT_SCHEMA,
+    maxTokens: 200,
+  };
   try {
-    const { fact } = await llmFor(c.env).generateJson<{ fact: string }>({
-      system: FACT_SYSTEM,
-      content: [{ type: "text", text: `The child just ate: ${items.join(", ")}` }],
-      schema: FACT_SCHEMA,
-      maxTokens: 200,
-    });
+    let fact: string;
+    try {
+      ({ fact } = await llmFast(c.env).generateJson<{ fact: string }>(factReq));
+    } catch (e) {
+      if (!(e instanceof LlmError)) throw e;
+      ({ fact } = await llmStrong(c.env).generateJson<{ fact: string }>(factReq));
+    }
     const text = typeof fact === "string" ? fact.trim() : "";
     return c.json({ fact: text || FALLBACK_FACT });
   } catch (e) {
