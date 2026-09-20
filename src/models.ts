@@ -198,5 +198,58 @@ export function parseDay(j: any): DayLedger {
 }
 
 export const CATEGORY_KEYS = ["breakfast", "lunch", "dinner", "snacks"] as const;
+export const CATEGORY_LABEL: Record<string, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+  snacks: "Snacks",
+};
 export const initialOf = (name: string) =>
   name.trim() ? name.trim()[0].toUpperCase() : "?";
+
+// Friendly labels for the canonical nutrient keys, in display order.
+export const NUTRIENT_LABEL: Record<string, string> = {
+  protein: "Protein",
+  carbohydrates: "Carbs",
+  fat: "Fat",
+  fibre: "Fibre",
+  calcium: "Calcium",
+  iron: "Iron",
+  zinc: "Zinc",
+  vitamin_a: "Vitamin A",
+  vitamin_c: "Vitamin C",
+  vitamin_d: "Vitamin D",
+  vitamin_b12: "Vitamin B12",
+  folate: "Folate",
+  iodine: "Iodine",
+  magnesium: "Magnesium",
+};
+export const NUTRIENT_ORDER = Object.keys(NUTRIENT_LABEL);
+
+const roundSmart = (v: number) => (v >= 100 ? Math.round(v) : Math.round(v * 10) / 10);
+
+// Aggregate a set of food items into calories + per-nutrient {value, unit}.
+export function aggregateItems(items: FoodItem[]): {
+  calories: number;
+  nutrients: { key: string; label: string; value: number; unit: string }[];
+} {
+  let calories = 0;
+  const by = new Map<string, { value: number; unit: string }>();
+  for (const it of items) {
+    calories += it.calories ?? 0;
+    for (const n of it.nutrients) {
+      const e = by.get(n.nutrient_type);
+      if (e) e.value += n.value;
+      else by.set(n.nutrient_type, { value: n.value, unit: n.unit });
+    }
+  }
+  return {
+    calories: roundSmart(calories),
+    nutrients: NUTRIENT_ORDER.filter((k) => by.has(k)).map((k) => ({
+      key: k,
+      label: NUTRIENT_LABEL[k],
+      value: roundSmart(by.get(k)!.value),
+      unit: by.get(k)!.unit,
+    })),
+  };
+}
