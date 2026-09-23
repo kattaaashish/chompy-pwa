@@ -28,6 +28,11 @@
   --sage-tint: #f0fae1;
   --sage-tint-strong: #e1eecc;
 
+  /* Day status (This week chips): all families / some / none */
+  --status-good: #8fa073; /* = sage */
+  --status-mid: #e6b84c; /* warm amber */
+  --status-none: #c94f43; /* warm red */
+
   --neutral-200: #eee7db;
   --neutral-300: #dcd3c4;
   --neutral-400: #afa697;

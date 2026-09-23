@@ -107,7 +107,10 @@ the URL in `shared/llm.ts`.
   circular chips for the 6 earlier IST days (today filtered out — it's the Today
   tab), and selecting one renders that day's Today-style breakdown (families
   eaten + nutrients vs target) from `/nutrition/week`'s per-day `meals`. No
-  cross-day averaging.
+  cross-day averaging. Chips are a 3-state traffic light (no counts): all five
+  families → green ✓, none → red ✗, some → amber • (`--status-*` in `theme.css`).
+  The non-eaten family pill reads "Not today" (Today tab) vs "Not eaten"
+  (past-day view) via `FamilySection`'s `notLabel` prop.
 
 ## MCP server (read-only)
 - `/mcp` = stateless Streamable HTTP (JSON responses; GET/DELETE → 405). Uses

@@ -79,6 +79,7 @@ export function MyFood({ onBack }: { onBack: () => void }) {
           <FamilySection
             title={S.familiesLabel}
             line={S.familiesLineToday(eaten.size)}
+            notLabel={S.familyNotToday}
             renderStatus={(f) => (eaten.has(f) ? { label: S.familyEaten, strong: true } : null)}
           />
           <NutrientSection
@@ -100,10 +101,12 @@ export function MyFood({ onBack }: { onBack: () => void }) {
 function FamilySection({
   title,
   line,
+  notLabel,
   renderStatus,
 }: {
   title: string;
   line: string;
+  notLabel: string;
   renderStatus: (f: FoodFamily) => { label: string; strong: boolean } | null;
 }) {
   return (
@@ -123,7 +126,7 @@ function FamilySection({
                 <div className="body-sm">{S.familyExamples[i]}</div>
               </div>
               <span className={`pill-tag ${status?.strong ? "" : "muted"}`}>
-                {status ? status.label : S.familyNotThisWeek}
+                {status ? status.label : notLabel}
               </span>
             </div>
           );
@@ -196,8 +199,15 @@ function WeekView({ week }: { week: { days: DayLedger[]; needs: DailyNeeds | nul
         <p className="body-sm">{S.weekDaysExplainer}</p>
         <div className="row" style={{ marginTop: 12, justifyContent: "space-between" }}>
           {past.map((d) => {
-            const fam = familiesEatenIn(d.meals);
-            const all = fam.size === familyOrder.length;
+            // Three states only: all five families (green ✓), none (red ✗),
+            // anything in between (amber •). No counts shown.
+            const eatenCount = familiesEatenIn(d.meals).size;
+            const chip =
+              eatenCount === familyOrder.length
+                ? { bg: "var(--status-good)", fg: "#fff", glyph: "✓" }
+                : eatenCount === 0
+                  ? { bg: "var(--status-none)", fg: "#fff", glyph: "✗" }
+                  : { bg: "var(--status-mid)", fg: "var(--ink)", glyph: "•" };
             const isSel = d.date === activeDate;
             return (
               <button
@@ -221,14 +231,14 @@ function WeekView({ week }: { week: { days: DayLedger[]; needs: DailyNeeds | nul
                     margin: "0 auto",
                     display: "grid",
                     placeItems: "center",
-                    background: all ? "var(--sage)" : "var(--surface)",
-                    color: all ? "var(--ground)" : "var(--neutral-700)",
+                    background: chip.bg,
+                    color: chip.fg,
                     fontWeight: 700,
-                    fontSize: 14,
-                    boxShadow: isSel ? "0 0 0 2px var(--ground)" : "none",
+                    fontSize: 16,
+                    boxShadow: isSel ? "0 0 0 2px var(--ink)" : "none",
                   }}
                 >
-                  {all ? "✓" : fam.size}
+                  {chip.glyph}
                 </div>
                 <div
                   className="body-sm"
@@ -250,6 +260,7 @@ function WeekView({ week }: { week: { days: DayLedger[]; needs: DailyNeeds | nul
       <FamilySection
         title={S.familiesLabel}
         line={S.familiesLineDay(eaten.size)}
+        notLabel={S.familyNotDay}
         renderStatus={(f) => (eaten.has(f) ? { label: S.familyEatenDay, strong: true } : null)}
       />
       <NutrientSection

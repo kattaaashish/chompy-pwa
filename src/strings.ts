@@ -88,6 +88,8 @@ export const S = {
       : `Ate from ${n} of the five families this day.`,
   familyEaten: "Eaten today",
   familyEatenDay: "Eaten",
+  familyNotToday: "Not today",
+  familyNotDay: "Not eaten",
   dayNoMeals: "No meals were logged on this day.",
   familyNotThisWeek: "Not this week",
   familyEveryDay: "Every day",
@@ -101,7 +103,8 @@ export const S = {
     "curd, milk, cheese",
   ] as const,
   weekDaysLabel: "Earlier days",
-  weekDaysExplainer: "Tap a day to see it. A tick means every family was eaten that day.",
+  weekDaysExplainer:
+    "Tap a day to see it. Green = all five families, amber = some, red = none.",
   nutritionDay: "Nutrition",
   nutritionToday: "Nutrition today",
   nutritionTodayExplainer:
