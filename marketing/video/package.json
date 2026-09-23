@@ -1,0 +1,30 @@
+{
+  "name": "chompy-marketing-video",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion source for the Chompy 30s vertical ad. Self-contained; not part of the app build.",
+  "scripts": {
+    "prestudio": "node tools/audio-manifest.mjs",
+    "studio": "remotion studio",
+    "prestill": "node tools/audio-manifest.mjs",
+    "still": "remotion still ChompyAd",
+    "prerender": "node tools/audio-manifest.mjs",
+    "render": "remotion render ChompyAd out/chompy-ad.mp4",
+    "seed": "node tools/seed.mjs",
+    "shots": "node tools/capture.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.527",
+    "@remotion/google-fonts": "^4.0.527",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "^4.0.527"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "playwright": "^1.63.0",
+    "typescript": "^7.0.2"
+  }
+}

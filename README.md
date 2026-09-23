@@ -1,93 +1,147 @@
 # Chompy 🍎
 
-A kids' meal-logging PWA. A child logs what they ate — by **photo** of the plate
-or by **typing** — and Chompy identifies the foods, estimates nutrition, and shows
-progress toward their daily needs. Built family-first: installable, no app store.
+**Snap their meals. Know their nutrition.**
 
-**Live:** https://chompy-pwa.ak-projects.workers.dev
+Chompy is a kids' meal-logging app that turns a quick photo of a plate — or a few
+typed words — into a clear picture of what your child actually ate and how it
+stacks up against their daily nutritional needs. No food diaries, no calorie
+math, no guesswork. Just snap, review, and see how the day is shaping up.
 
-This is the consolidated version — **one repo, one language (TypeScript), one
-deploy**, entirely on Cloudflare. It replaces an earlier split of a Flutter app +
-a Supabase backend.
+**Live app:** https://chompy-pwa.ak-projects.workers.dev
 
 ---
 
-## Stack
+## 🎬 See Chompy in action
 
-| Concern      | Tech |
-|--------------|------|
+▶️ **[Watch the 30-second intro](https://pub-c2be4fe9018b485684e4a9b5c17afdc3.r2.dev/chompy-ad.mp4)** — hosted on Cloudflare R2.
+
+<video src="https://pub-c2be4fe9018b485684e4a9b5c17afdc3.r2.dev/chompy-ad.mp4" controls width="360"></video>
+
+> If the player above doesn't load in your Markdown viewer, use the link.
+
+---
+
+## What Chompy is
+
+A family-first, installable web app (PWA) — nothing to download from an app store.
+A child (or parent) logs a meal, and Chompy's AI recognizes the foods, estimates
+the nutrition, and tracks it against a personalized daily target based on the
+child's age and growth. It's built to make healthy eating **visible and
+encouraging**, not clinical.
+
+## What Chompy can do
+
+- **📸 Log by photo** — snap the plate and Chompy identifies the dishes and judges
+  portions from the image.
+- **⌨️ Log by typing** — "2 rotis, some dal, a banana" works just as well.
+- **🥗 Estimate nutrition** — calories plus a full nutrient breakdown for every
+  item, with each food sorted into friendly **GO / GROW / GLOW** groups.
+- **📊 Track the day** — see meals, totals, and progress toward a personalized
+  daily requirement (based on ICMR-NIN guidance for the child's age).
+- **📅 See the week** — a rolling 7-day view of how nutrition trends over time.
+- **✏️ Review & edit** — confirm or tweak what was detected before saving; reopen
+  and edit any saved meal later.
+- **💡 Get dinner ideas** — a daily suggestion for what to add at dinner to fill
+  the gaps in the day.
+- **🔔 Gentle reminders** — optional push notifications so meals don't get missed.
+- **🤖 Ask from ChatGPT or Claude** — connect Chompy as a read-only assistant tool
+  (see below) and just *ask* how the day is going.
+
+## How to use Chompy
+
+1. **Install it.** On iPhone, open the app URL in **Safari**, tap **Share → Add to
+   Home Screen**. On Android, open in Chrome and tap **Install app**. It runs
+   full-screen like a native app.
+2. **Sign in** with your phone number and the one-time code.
+3. **Set up the child's profile** once (name, age, a height/weight) so nutrition
+   targets are personalized.
+4. **Log a meal** — tap to add, then choose **photo** or **type**.
+5. **Review** what Chompy detected, adjust if needed, and **save**.
+6. **Track** the day and week from the home screen, and check the **dinner idea**
+   in the evening.
+
+---
+
+## 🤖 Use Chompy from ChatGPT (and Claude)
+
+Chompy exposes a **read-only assistant integration** (an [MCP](https://modelcontextprotocol.io)
+server) so you can ask an AI assistant about your child's eating without opening
+the app. It can **read** the log; it can never change anything.
+
+**Connect it:**
+
+| Client | How |
+|---|---|
+| **ChatGPT** | Settings → **Connectors** (custom connector / developer mode) → add `https://chompy-pwa.ak-projects.workers.dev/mcp` |
+| **Claude.ai / Claude Desktop** | Settings → **Connectors** → *Add custom connector* → paste the same `/mcp` URL |
+| **Claude Code** | `claude mcp add --transport http chompy https://chompy-pwa.ak-projects.workers.dev/mcp` |
+
+On first connect, your assistant opens a short **sign-in page** in the browser
+(your phone number + one-time code) and you **authorize** access. After that you
+can ask things like *"What did my child eat today?"*, *"Which nutrients are low
+this week?"*, or *"What should I add at dinner?"* and get answers grounded in the
+real log.
+
+**What the assistant can read:** the child's profile and daily target, meals with
+their items and nutrition, meal photos, day/week nutrition summaries, dinner
+recommendations, and reference info on how Chompy calculates. **There are no
+write tools** — an assistant can look, but never log or edit.
+
+---
+
+## 🛠️ Tech stack
+
+**One repository, one language (TypeScript), one deploy — entirely on Cloudflare.**
+
+### The app
+
+| Concern | Tech |
+|---|---|
 | PWA frontend | Vite + React + TypeScript, `vite-plugin-pwa` (Workbox) |
-| API / compute| Hono on Cloudflare **Workers** (`/api/*`) |
-| Database     | Cloudflare **D1** (SQLite) + Drizzle ORM |
-| File storage | Cloudflare **R2** (meal photos, private, per-user prefix) |
-| Sessions     | Self-issued **JWT** (jose), 30-day |
-| OTP          | Cloudflare **KV** (TTL'd challenges) |
-| LLM          | **Anthropic Claude** — Haiku 4.5 (fast) + Opus 4.8 (vision/quality) |
+| API / compute | [Hono](https://hono.dev) on Cloudflare **Workers** |
+| Database | Cloudflare **D1** (SQLite) + Drizzle ORM |
+| File storage | Cloudflare **R2** (meal photos, private, per-user) |
+| Sessions | Self-issued **JWT** (jose) |
+| One-time codes | Cloudflare **KV** (TTL'd) |
+| AI | **Anthropic Claude** — Haiku 4.5 (fast text) + Opus 4.8 (vision & quality) |
+| Assistant access | **MCP** server + OAuth 2.1, served by the same Worker |
 
-One Worker serves both the built PWA (static assets via the `ASSETS` binding) and
-the JSON API. No Supabase, no separate backend, no server to run.
+A single Worker serves the built PWA (static assets), the JSON API, **and** the
+MCP server. No separate backend, no server to run.
 
----
+### The marketing video
 
-## How the food-logging flow works
+The 30-second ad is generated **entirely in code** and rendered as an MP4:
 
-Both entry modes funnel into one pipeline: **extract → estimate → review → save**.
+| Concern | Tech |
+|---|---|
+| Video engine | [**Remotion**](https://remotion.dev) — the ad is a React composition (1080×1920, 30 fps) |
+| Real app footage | **Playwright** captures live screenshots of the app; scenes animate crops of them so the UI is pixel-accurate |
+| Voiceover | **ElevenLabs** text-to-speech (v3), one clip per scene, generated via a script |
+| Background music | An **instrumental track** (ElevenLabs Music), converted and mixed under the voiceover with fade in/out inside Remotion |
+| Hosting | Rendered MP4 uploaded to a public **Cloudflare R2** bucket |
 
-- **Photo** → the plate image is stored in R2, then Claude (Opus, vision) lists the
-  dishes with rough quantities. The image is *also* fed into per-item nutrition
-  estimation so portions are judged from pixels.
-- **Type** → Claude (Haiku, fast) parses the free text ("2 roti, some dal") into
-  items + quantities.
-- Both then run per-item **nutrition estimation** (Opus) — calories, a canonical
-  nutrient set, and a GO/GROW/GLOW **food group**.
-- The user reviews/edits on a **review screen**, then saves. A saved meal can be
-  reopened from Home and **edited** (quantities re-estimated on save).
-
-LLM calls use **structured outputs** (JSON schema) so responses are always
-parseable. `effort: low` is sent only to models that support it (Opus/Sonnet-4.6 —
-**Haiku 4.5 400s on `effort`**).
+Lives in [`marketing/video/`](marketing/video/); generation scripts in
+[`scripts/`](scripts/).
 
 ---
 
-## Layout
+## 💻 Run it locally
 
-```
-worker/                 Cloudflare Worker (Hono)
-  index.ts              entry — mounts /api/* and serves static assets
-  db/schema.ts          Drizzle schema (D1)
-  db/client.ts          drizzle(env.DB)
-  lib/                  env, auth (JWT), otp (KV), http, requirement
-  routes/               auth, profile, meals, nutrition
-shared/                 runtime-agnostic domain logic (LLM injected, no global env)
-  llm.ts nutrition.ts requirements.ts validation.ts
-src/                    React PWA — a state-machine SPA (no URL routing)
-  store.tsx             onboarding + food-log state machine + actions
-  api.ts                typed client over /api/* (with client-side retry)
-  models.ts             food families, nutrient rows, aggregation
-  screens/              welcome, phone, otp, profile, home, my food,
-                        meal detail/edit, food/* (mode, type, review, …)
-migrations/             D1 migrations (drizzle-kit generate)
-```
-
----
-
-## Local development
+### The app
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # set JWT_SECRET, OTP_PEPPER, ANTHROPIC_API_KEY, OTP_DEBUG=true
+cp .dev.vars.example .dev.vars   # fill in your own JWT_SECRET, OTP_PEPPER, ANTHROPIC_API_KEY
 npm run db:migrate:local         # apply migrations to local D1 (Miniflare)
 npm run build                    # build the PWA into dist/client
 npm run dev:worker               # wrangler dev — serves PWA + API + local D1/R2/KV
 ```
 
-Open http://localhost:8787. With `OTP_DEBUG=true`, any number signs in with the
-dev master code **987654** (and `request-otp` echoes the real code).
+Open http://localhost:8787. For fast frontend iteration, run `npm run dev` (Vite
+on :5173, proxies `/api` to the worker) alongside `npm run dev:worker`.
 
-For fast frontend iteration: `npm run dev` (Vite on 5173, proxies `/api` to
-`wrangler dev` on 8787) alongside `npm run dev:worker`.
-
-## Scripts
+Common scripts:
 
 | Script | Does |
 |---|---|
@@ -99,132 +153,38 @@ For fast frontend iteration: `npm run dev` (Vite on 5173, proxies `/api` to
 | `npm run db:generate` | Generate a D1 migration from the schema |
 | `npm run db:migrate:local` / `:remote` | Apply migrations to local / hosted D1 |
 
----
+You'll need your own Cloudflare account (for D1 / KV / R2) and an Anthropic API
+key. Create the resources with `wrangler d1 create`, `wrangler kv namespace
+create`, and `wrangler r2 bucket create`, then set app secrets with `wrangler
+secret put`.
 
-## Deploy
-
-Cloud resources already exist (D1 `chompy-db`, KV `OTP_KV`, R2
-`chompy-meal-photos`) and their ids are in `wrangler.jsonc`. Secrets are set via
-`wrangler secret put` (`ANTHROPIC_API_KEY`, `JWT_SECRET`, `OTP_PEPPER`).
-
-```bash
-npm run deploy
-```
-
-First-time setup on a new account:
+### The marketing video
 
 ```bash
-wrangler d1 create chompy-db          # paste database_id into wrangler.jsonc
-wrangler kv namespace create OTP_KV   # paste id into wrangler.jsonc
-wrangler r2 bucket create chompy-meal-photos
-npm run db:migrate:remote
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put JWT_SECRET
-wrangler secret put OTP_PEPPER
+cd marketing/video
+npm install
+npm run studio      # live preview / scrub the timeline in Remotion Studio
+npm run render      # render the MP4 to out/chompy-ad.mp4
 ```
 
----
-
-## API (all POST unless noted)
-
-| Endpoint | Purpose |
-|---|---|
-| `/api/auth/request-otp` | validate phone, store hashed OTP in KV (delivery stubbed) |
-| `/api/auth/verify-otp` | verify code (or master OTP), create/reuse account, mint JWT |
-| `/api/session-state` | resume stage from server truth (`phone`/`profile`/`home`) |
-| `/api/profile` | save profile + first body measurement |
-| `/api/meal/extract` | photo/text → items → per-item nutrition (review table) |
-| `/api/nutrition/estimate` | re-estimate one item after an edit |
-| `/api/meal/log` | save meal + items (+ raw `input` for MCP); idempotent via `clientToken` |
-| `/api/meal/update` | edit a saved meal (owner-checked); recomputes totals |
-| `/api/meal/fact` | one kid-friendly fun fact for a meal |
-| `/api/nutrition/day` | a day's meals + totals + daily requirement (IST) |
-| `/api/nutrition/week` | last 7 IST days + requirement |
-| `GET /api/photo/*` | serve a meal photo (owner-only) |
-| `GET /api/health` | health check |
-| `/mcp`, `/oauth/*`, `/.well-known/oauth-*` | read-only MCP server + its OAuth login (see below) |
-
-Error envelope: `{ error: { code, message, fieldErrors?, retryable? } }`.
-
----
-
-## MCP server (read-only) — use your data from Claude / ChatGPT / any harness
-
-The Worker also exposes a **read-only [MCP](https://modelcontextprotocol.io) server**
-at **`/mcp`** (Streamable HTTP, stateless JSON). It surfaces everything the app
-stores for the signed-in account — nothing else, and no tool can write.
-
-**Connect** by adding `https://chompy-pwa.ak-projects.workers.dev/mcp` as a custom
-connector / remote MCP server. The client discovers OAuth automatically, opens a
-tiny login page in the browser (phone number + OTP — the same `123456` master
-code as the app), and receives a token that is scoped to **`aud: "mcp"`**, so even
-if a harness leaks it, it can only read via `/mcp` and is rejected by `/api/*`.
-
-| Client | How |
-|---|---|
-| Claude.ai / Claude Desktop | Settings → Connectors → *Add custom connector* → paste the `/mcp` URL |
-| ChatGPT | Settings → Connectors (Developer mode) → *Create* → paste the `/mcp` URL. `search` + `fetch` tools are included for ChatGPT's connector contract |
-| Claude Code | `claude mcp add --transport http chompy https://chompy-pwa.ak-projects.workers.dev/mcp` (then `/mcp` → authenticate) |
-| Anything with a bearer header | Sign in via `POST /api/auth/verify-otp` and send `Authorization: Bearer <access_token>` — app tokens are accepted by `/mcp` too |
-
-**Tools**
-
-| Tool | Returns |
-|---|---|
-| `get_profile` | child profile, height/weight history, personalised daily requirement (ICMR-NIN) |
-| `list_meals` | meals in an IST date range (default last 7 days) with items, nutrition, totals and **raw input** |
-| `get_meal` | one meal in full |
-| `get_meal_photo` | the plate photo as an image block (photo-logged meals) |
-| `get_nutrition_summary` | day-by-day totals + % of requirement, food-group / GO-GROW-GLOW breakdown, averages |
-| `get_recommendations` | the evening dinner suggestions per day |
-| `get_reference` | nutrient keys/units, food groups, and how Chompy calculates |
-| `search` / `fetch` | ChatGPT-style search over meals by food, text or date; fetch a meal document |
-
-Per meal, `input` carries **what was entered** — `mode` (`text`/`photo`), the typed
-`text`, `has_photo` — and **what Chompy first made of it**: `extracted_items`, the
-review table exactly as the LLM produced it before the child edited it. `items`
-are the confirmed, saved rows. Meals saved before this existed have `mode: null`.
-
-Endpoints behind the scenes: `/.well-known/oauth-protected-resource[/mcp]`,
-`/.well-known/oauth-authorization-server`, `/oauth/register` (dynamic client
-registration), `/oauth/authorize` (login page), `/oauth/token` (PKCE S256 required,
-refresh tokens rotate). Codes/clients/refresh tokens live in `OTP_KV`. Code:
-`worker/mcp/` (`oauth.ts`, `server.ts`, `index.ts`).
-
-Quick local check:
+To (re)generate the audio, put your ElevenLabs credentials in a `.env` at the repo
+root (`ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`) and run:
 
 ```bash
-TOK=$(curl -s localhost:8787/api/auth/verify-otp -H 'content-type: application/json' \
-  -d '{"phone":"9876543210","code":"123456"}' | jq -r .session.access_token)
-curl -s localhost:8787/mcp -H "authorization: Bearer $TOK" -H 'content-type: application/json' \
-  -H 'accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools[].name'
+node --env-file=.env scripts/generate-voice.mjs   # voiceover clips
+node --env-file=.env scripts/generate-music.mjs   # background music bed
 ```
 
----
-
-## Login (important)
-
-Real SMS delivery is **not wired** — the OTP code is only logged, not sent. So a
-**master OTP** (`MASTER_OTP` var in `wrangler.jsonc`, currently `123456`) lets the
-family sign in: entering it verifies **any** phone number. It's a shared password —
-anyone with it + the URL can sign in as any number — acceptable for an unlisted
-family app. Remove the var (or wire real SMS in `worker/routes/auth.ts`
-`request-otp`) to disable it.
-
-> Because `MASTER_OTP` sits in `wrangler.jsonc`, **keep this repo private**, or move
-> the value to a `wrangler secret`.
+Audio files land in `marketing/video/public/audio/` and are picked up
+automatically on the next render. To re-capture the in-app screenshots, see the
+tools in `marketing/video/tools/`.
 
 ---
 
-## Known gotchas
+## Notes
 
-- **Workers → Anthropic egress occasionally returns `403 "Request not allowed"`**
-  (abuse protection on shared Worker egress IPs; direct calls are reliable). It's
-  correlated within a single invocation, so it's handled with: in-Worker retry +
-  backoff, a Haiku→Opus model fallback, and a **client-side retry on a fresh
-  request** (new isolate/IP) — see `shared/llm.ts` and `src/api.ts`. The durable
-  fix is routing through **Cloudflare AI Gateway** (not yet set up).
-- **Nutrition is Claude-estimated**, not grounded in a food database — approximate
-  by design.
-- **Days bucket in IST** (`istDayRange` / `istDayKey` in `shared/nutrition.ts`).
+- **Nutrition is AI-estimated**, not grounded in a food database — it's meant as a
+  helpful approximation, not medical advice.
+- Days are bucketed in **IST**.
+- This project consolidates an earlier Flutter app + Supabase backend into a
+  single all-TypeScript, all-Cloudflare codebase.

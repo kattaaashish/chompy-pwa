@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+        color: #3a2a1e;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .page { padding: 46px 54px; }
+      .page-break { page-break-before: always; }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        border-bottom: 3px solid #c1703c;
+        padding-bottom: 20px;
+        margin-bottom: 26px;
+      }
+      header img { width: 62px; height: 62px; border-radius: 15px; }
+      header .title { font-size: 26px; font-weight: 800; color: #c1703c; }
+      header .subtitle { font-size: 13px; color: #8a7a6a; margin-top: 2px; }
+
+      h2 {
+        font-size: 19px;
+        color: #a85c2e;
+        margin: 0 0 4px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .lead { color: #6f5f50; margin: 0 0 18px; }
+
+      ol { margin: 0; padding-left: 22px; }
+      ol li { margin-bottom: 10px; }
+      code {
+        background: #f4ece0;
+        border: 1px solid #e6d8c2;
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+        font-size: 12px;
+        color: #8a4a22;
+      }
+      .otp {
+        display: inline-block;
+        background: #c1703c;
+        color: #f0e6d2;
+        font-weight: 800;
+        letter-spacing: 2px;
+        padding: 2px 12px;
+        border-radius: 6px;
+        font-family: "SF Mono", Menlo, Consolas, monospace;
+      }
+      .callout {
+        margin-top: 20px;
+        background: #faf4ea;
+        border-left: 4px solid #c1703c;
+        border-radius: 8px;
+        padding: 14px 18px;
+        color: #6f5f50;
+        font-size: 12px;
+      }
+      .warn { border-left-color: #b5502a; background: #fdefe9; }
+      .warn strong { color: #b5502a; }
+      .url { color: #a85c2e; font-weight: 600; word-break: break-all; }
+      footer {
+        margin-top: 34px;
+        padding-top: 12px;
+        border-top: 1px solid #e6d8c2;
+        color: #a99a88;
+        font-size: 11px;
+        display: flex;
+        justify-content: space-between;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Page 1 — iPhone -->
+    <div class="page">
+      <header>
+        <img src="{{LOGO}}" alt="Chompy" />
+        <div>
+          <div class="title">Chompy — Quick Start</div>
+          <div class="subtitle">Kids' meal logging · Snap their meals. Know their nutrition.</div>
+        </div>
+      </header>
+
+      <h2>📱 Set up Chompy on iPhone</h2>
+      <p class="lead">Chompy is a web app (PWA) — no App Store needed. You install it straight from Safari.</p>
+      <ol>
+        <li><strong>Open Safari</strong> (must be Safari, not Chrome) and go to
+          <span class="url">https://chompy-pwa.ak-projects.workers.dev</span></li>
+        <li>Tap the <strong>Share</strong> button (the square with an up-arrow).</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong> → <strong>Add</strong>.</li>
+        <li>Launch <strong>Chompy</strong> from your home screen — it opens full-screen like a native app.</li>
+        <li><strong>Sign in:</strong> enter your <strong>phone number</strong>, then tap send — you'll be asked for a 6-digit code.</li>
+        <li><strong>Default OTP:</strong> <span class="otp">123456</span> — this master code works for
+          <em>any</em> phone number (SMS isn't wired up yet). Enter it to log in.</li>
+        <li>First time only: fill in the child's <strong>profile</strong> (name, age, etc.) so nutrition
+          targets are personalized. You're in.</li>
+      </ol>
+
+      <div class="callout">
+        Allow <strong>notifications</strong> if you want meal reminders. Updates are automatic (it's a PWA) —
+        no reinstalling. The code <span class="otp" style="padding:1px 8px">123456</span> is a shared dev
+        password: anyone with it can sign into any number, so don't post the link + code publicly.
+      </div>
+
+      <footer><span>Chompy Quick Start</span><span>Page 1 of 2</span></footer>
+    </div>
+
+    <!-- Page 2 — ChatGPT -->
+    <div class="page page-break">
+      <header>
+        <img src="{{LOGO}}" alt="Chompy" />
+        <div>
+          <div class="title">Chompy — ChatGPT Integration</div>
+          <div class="subtitle">Read-only access to the food log via MCP + OAuth</div>
+        </div>
+      </header>
+
+      <h2>🤖 Connect Chompy to ChatGPT</h2>
+      <p class="lead">Chompy runs a read-only MCP server, so ChatGPT can search and read your child's
+        food log — view-only, no writes.</p>
+      <ol>
+        <li>In <strong>ChatGPT</strong>, open <strong>Settings → Connectors</strong>. (Requires a plan/mode
+          that allows <strong>custom connectors</strong> — Pro, Business/Enterprise, or Developer mode.)</li>
+        <li><strong>Add a custom connector</strong> and enter the MCP URL:
+          <br /><span class="url">https://chompy-pwa.ak-projects.workers.dev/mcp</span></li>
+        <li>ChatGPT auto-discovers the OAuth server and opens a <strong>login page</strong>.</li>
+        <li>Enter your <strong>phone number</strong>, then the OTP.
+          <strong>Default OTP:</strong> <span class="otp">123456</span> (same master code as the app).</li>
+        <li><strong>Authorize</strong> — the connector links to that family's log.</li>
+        <li>In a chat (or Deep Research), enable the <strong>Chompy</strong> connector and ask e.g.
+          <em>"What did my child eat today?"</em> or <em>"Which nutrients are low this week?"</em></li>
+      </ol>
+
+      <div class="callout">
+        <strong>What it can read:</strong> profile, meals, meal photos, daily/weekly nutrition summaries,
+        and dinner recommendations. There are <strong>no write tools</strong> — ChatGPT can't log or change
+        anything. The same <code>/mcp</code> URL + OTP also works in other MCP clients (e.g. Claude Desktop).
+      </div>
+
+      <div class="callout warn">
+        <strong>Security note (dev state):</strong> this MCP endpoint is public and auto-discoverable, and the
+        <span class="otp" style="padding:1px 8px">123456</span> master OTP verifies <em>any</em> phone — so
+        anyone who reaches it could mint a read token to a family's whole log &amp; photos. Fine for testing;
+        lock it down (real SMS, token revocation, rate limiting) before real users.
+      </div>
+
+      <footer><span>Chompy ChatGPT Integration</span><span>Page 2 of 2</span></footer>
+    </div>
+  </body>
+</html>

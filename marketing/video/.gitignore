@@ -1,0 +1,6 @@
+node_modules/
+out/
+# Audio deliverables + raw sources are dropped in by hand; keep the folder, not the files.
+public/audio/*.mp3
+public/audio/*.mp4
+tools/.token
