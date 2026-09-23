@@ -225,8 +225,14 @@ export const api = {
     name: string,
     amount: number,
     unit: string,
+    photoPath?: string | null,
   ): Promise<FoodItem> {
-    const j = await post("/nutrition/estimate", { item: name, quantity: { amount, unit } }, token, 3);
+    const j = await post(
+      "/nutrition/estimate",
+      { item: name, quantity: { amount, unit }, photoPath: photoPath ?? null },
+      token,
+      3,
+    );
     return {
       name,
       amount,

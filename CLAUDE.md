@@ -47,22 +47,30 @@ in `src/store.tsx`, mirroring the old Flutter `_Root`.
   `Home.tsx` = category-grouped "Meals today").
 
 ## LLM model routing (important)
-- **Text extraction + fun fact → Haiku 4.5** (`CHOMPY_LLM_MODEL_FAST`, low latency).
-- **Image extraction + all nutrition estimation → Opus 4.8** (`CHOMPY_LLM_MODEL`,
-  vision/quality).
-- On the **photo path only**, the plate image is passed into per-item estimation
-  (`estimateNutrition(..., image)`), so portions come from pixels.
+- **Logging (`/meal/extract`) → one Opus 4.8 call** (`CHOMPY_LLM_MODEL`): a single
+  `extractAndEstimate()` (`shared/nutrition.ts`) returns the whole review table —
+  items **and** per-item nutrition — in one round-trip. Replaces the old
+  extract-then-estimate-per-item fan-out (was Haiku extract + N Opus estimates).
+  On photos the plate image is sent **once** (not once per item); the model reads
+  every portion from that one image.
+- **Fun fact → Haiku 4.5** (`CHOMPY_LLM_MODEL_FAST`, low latency, no vision).
+- **Edit re-estimate (`/nutrition/estimate`) → single-item Opus** (`estimateNutrition`).
+  If the client passes the meal's `photoPath`, the route loads it from R2
+  (owner-checked) and threads it in, so an edited item is re-portioned from the
+  same plate image instead of text-only.
 - **`effort` 400s on Haiku 4.5** — `shared/llm.ts` gates it to Opus/Sonnet-4.6.
   If you add a model, update `supportsEffort()`.
-- Extraction prompt is split: shared base + text hint (trust stated quantities) vs
-  image hint (estimate portions, don't invent hidden foods).
+- Combined prompt = shared extraction base + modality hint (text: trust stated
+  quantities; image: estimate portions, don't invent hidden foods) + the estimation
+  instructions (calories/food_group/nutrient set).
 
 ## Resilience — the Workers→Anthropic 403
 The Worker's fetch egress intermittently draws `403 "Request not allowed"`
 (abuse protection on shared IPs; direct calls are 100% reliable). It's **correlated
 within one invocation**, so it's mitigated in three layers:
 1. `shared/llm.ts` — retry transient 403/429/5xx with backoff.
-2. `worker/routes/meals.ts` — text extraction & fact fall back Haiku→Opus.
+2. `worker/routes/meals.ts` — the fun-fact call falls back Haiku→Opus. (Logging is
+   now a single Opus call, so there's no per-stage fallback there anymore.)
 3. `src/api.ts` — **client-side retry on a fresh request** (new isolate/IP) for the
    LLM-backed calls — this is the effective fix (in-invocation retries share the
    flagged IP).
@@ -90,7 +98,8 @@ the URL in `shared/llm.ts`.
   in a ref so retries reuse it).
 - Editing a saved meal: `POST /api/meal/update` (owner-checked) replaces the item
   set + recomputes cached totals. The client re-estimates edited items via
-  `/nutrition/estimate` before saving.
+  `/nutrition/estimate` before saving, passing the meal's `photoPath` so photo
+  meals keep image-based portioning on edits.
 - Home "Meals today" groups meals by category and shows a summary
   (`aggregateItems` in `models.ts`), expandable to items; edit is per underlying
   meal id.

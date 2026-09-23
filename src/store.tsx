@@ -112,7 +112,12 @@ interface Store extends State {
   cancelPhoto: () => void;
   setReviewItems: (items: FoodItem[]) => void;
   setCategory: (cat: string) => void;
-  estimateItem: (name: string, amount: number, unit: string) => Promise<FoodItem>;
+  estimateItem: (
+    name: string,
+    amount: number,
+    unit: string,
+    photoPath?: string | null,
+  ) => Promise<FoodItem>;
   updateMeal: (mealId: string, category: string, items: FoodItem[]) => Promise<void>;
   saveProfile: (p: {
     name: string;
@@ -296,10 +301,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setCategory(cat: string) {
         set({ category: cat });
       },
-      async estimateItem(name: string, amount: number, unit: string) {
+      async estimateItem(name: string, amount: number, unit: string, photoPath?: string | null) {
         const t = tok();
         if (!t) throw ApiError.network();
-        return await api.nutritionEstimate(t, name, amount, unit);
+        return await api.nutritionEstimate(t, name, amount, unit, photoPath);
       },
       async updateMeal(mealId: string, category: string, items: FoodItem[]) {
         const t = tok();

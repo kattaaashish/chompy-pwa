@@ -14,12 +14,11 @@ import { createLlm, DEFAULT_FAST_MODEL } from "../../shared/llm";
 import { LlmError } from "../../shared/llm";
 import {
   type FoodGroup,
+  type MealImage,
   type Nutrient,
-  buildReviewItem,
   defaultCategory,
   estimateNutrition,
-  extractItemsFromImage,
-  extractItemsFromText,
+  extractAndEstimate,
   isValidCategory,
   istDayRangeFor,
   sumNutrition,
@@ -54,66 +53,87 @@ function decodeImage(input: string): { base64: string; bytes: Uint8Array } {
   return { base64, bytes };
 }
 
-// Stage 1 + 2 — entry (photo/typed) => items => per-item estimation => review table.
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+// Load a meal's plate photo from R2 as a MealImage, for re-estimating an edited
+// item with the same portion context the original had. Owner-checked (keys are
+// namespaced by userId) and best-effort — any miss just falls back to text-only.
+async function loadMealImage(
+  env: Env,
+  userId: string,
+  photoPath: unknown,
+): Promise<MealImage | undefined> {
+  if (typeof photoPath !== "string" || !photoPath.startsWith(`${userId}/`)) return undefined;
+  try {
+    const obj = await env.PHOTOS.get(photoPath);
+    if (!obj) return undefined;
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    return { base64: bytesToBase64(bytes), mimeType: obj.httpMetadata?.contentType ?? "image/jpeg" };
+  } catch (e) {
+    console.warn(`[nutrition-estimate] photo load failed: ${e}`);
+    return undefined;
+  }
+}
+
+// Stages 1 + 2 in one call — entry (photo/typed) => a single LLM call returns
+// the review table (items + per-item nutrition). Replaces the old
+// extract-then-estimate-per-item fan-out: fewer round-trips (lower latency/cost,
+// less 403 egress exposure) and, on photos, the plate image is uploaded once
+// instead of once per item.
 mealRoutes.post("/meal/extract", requireAuth, async (c) => {
   const userId = c.get("userId");
   const body = await c.req.json().catch(() => ({}));
   const mode = body?.mode;
 
-  let extracted: { item: string; quantity: { amount: number; unit: string } }[] = [];
   let photoPath: string | undefined;
-  // On the photo path, the plate image is fed into per-item estimation too, so
-  // portions are read from pixels rather than just the extracted text.
-  let estimateImage: { base64: string; mimeType: string } | undefined;
+  let input: { text: string } | { image: MealImage };
 
-  try {
-    if (mode === "photo") {
-      const image = body?.image;
-      const mimeType = body?.mimeType;
-      if (typeof image !== "string" || !image) {
-        return apiError(c, "validation_failed", "An image is required.", 422);
-      }
-      if (typeof mimeType !== "string" || !ALLOWED_MIME.has(mimeType)) {
-        return apiError(c, "validation_failed", "Image must be JPEG, PNG, or WebP.", 422);
-      }
-
-      let base64: string;
-      let bytes: Uint8Array;
-      try {
-        ({ base64, bytes } = decodeImage(image));
-      } catch (_e) {
-        return apiError(c, "validation_failed", "Image data is invalid.", 422);
-      }
-
-      const path = `${userId}/${crypto.randomUUID()}.${MIME_EXT[mimeType]}`;
-      try {
-        await c.env.PHOTOS.put(path, bytes, { httpMetadata: { contentType: mimeType } });
-      } catch (e) {
-        console.error(`[meal-extract] upload failed: ${e}`);
-        return apiError(c, "server_error", "Couldn't save the photo.", 500, { retryable: true });
-      }
-      photoPath = path;
-      estimateImage = { base64, mimeType };
-
-      // Image extraction → strong (vision) model.
-      extracted = await extractItemsFromImage(llmStrong(c.env), base64, mimeType);
-    } else if (mode === "text") {
-      const text = typeof body?.text === "string" ? body.text.trim() : "";
-      if (!text) return apiError(c, "validation_failed", "Enter what you ate.", 422);
-      // Text extraction → fast model (low latency), falling back to the strong
-      // model. The fast model (Haiku) intermittently draws a 403 on the Workers
-      // egress path where the strong model (Opus) is reliable, so this keeps the
-      // latency win in the common case without a user-visible failure.
-      try {
-        extracted = await extractItemsFromText(llmFast(c.env), text);
-      } catch (e) {
-        if (!(e instanceof LlmError)) throw e;
-        console.warn(`[meal-extract] fast model failed, falling back to strong: ${e.message}`);
-        extracted = await extractItemsFromText(llmStrong(c.env), text);
-      }
-    } else {
-      return apiError(c, "validation_failed", 'mode must be "photo" or "text".', 422);
+  if (mode === "photo") {
+    const image = body?.image;
+    const mimeType = body?.mimeType;
+    if (typeof image !== "string" || !image) {
+      return apiError(c, "validation_failed", "An image is required.", 422);
     }
+    if (typeof mimeType !== "string" || !ALLOWED_MIME.has(mimeType)) {
+      return apiError(c, "validation_failed", "Image must be JPEG, PNG, or WebP.", 422);
+    }
+
+    let base64: string;
+    let bytes: Uint8Array;
+    try {
+      ({ base64, bytes } = decodeImage(image));
+    } catch (_e) {
+      return apiError(c, "validation_failed", "Image data is invalid.", 422);
+    }
+
+    const path = `${userId}/${crypto.randomUUID()}.${MIME_EXT[mimeType]}`;
+    try {
+      await c.env.PHOTOS.put(path, bytes, { httpMetadata: { contentType: mimeType } });
+    } catch (e) {
+      console.error(`[meal-extract] upload failed: ${e}`);
+      return apiError(c, "server_error", "Couldn't save the photo.", 500, { retryable: true });
+    }
+    photoPath = path;
+    input = { image: { base64, mimeType } };
+  } else if (mode === "text") {
+    const text = typeof body?.text === "string" ? body.text.trim() : "";
+    if (!text) return apiError(c, "validation_failed", "Enter what you ate.", 422);
+    input = { text };
+  } else {
+    return apiError(c, "validation_failed", 'mode must be "photo" or "text".', 422);
+  }
+
+  // One strong-model (vision-capable) call does extraction + estimation together.
+  let items;
+  try {
+    items = await extractAndEstimate(llmStrong(c.env), input);
   } catch (e) {
     if (e instanceof LlmError) {
       return apiError(c, "server_error", e.message, 500, { retryable: e.retryable });
@@ -122,26 +142,12 @@ mealRoutes.post("/meal/extract", requireAuth, async (c) => {
     return apiError(c, "server_error", "Something went wrong.", 500, { retryable: true });
   }
 
-  // Estimation → strong model, always. On the photo path each item also gets the
-  // plate image so the portion is judged visually.
-  let items;
-  try {
-    const strong = llmStrong(c.env);
-    items = await Promise.all(
-      extracted.map((it) => buildReviewItem(strong, it.item, it.quantity, estimateImage)),
-    );
-  } catch (e) {
-    const message = e instanceof LlmError ? e.message : "Something went wrong.";
-    return apiError(c, "server_error", message, 500, {
-      retryable: e instanceof LlmError ? e.retryable : true,
-    });
-  }
-
   return c.json({ items, photoPath, defaultCategory: defaultCategory() });
 });
 
 // Stage 2 (re-run) — estimate nutrition for a single added/edited item.
 mealRoutes.post("/nutrition/estimate", requireAuth, async (c) => {
+  const userId = c.get("userId");
   const body = await c.req.json().catch(() => ({}));
 
   const name = typeof body?.item === "string" ? body.item.trim() : "";
@@ -164,9 +170,11 @@ mealRoutes.post("/nutrition/estimate", requireAuth, async (c) => {
   }
 
   try {
-    // Manual re-estimate (item added/edited in review) — strong model, text-only
-    // (no image is available at this point).
-    const result = await estimateNutrition(llmStrong(c.env), name, { amount, unit });
+    // Manual re-estimate (item added/edited in review) — strong model. If the
+    // client passes the meal's photoPath (editing a photo-logged meal), thread
+    // the plate image in so the portion is judged the same way it was at logging.
+    const image = await loadMealImage(c.env, userId, body?.photoPath);
+    const result = await estimateNutrition(llmStrong(c.env), name, { amount, unit }, image);
     return c.json(result);
   } catch (e) {
     if (e instanceof LlmError) {

@@ -96,7 +96,7 @@ export function MealDetail({ meal, onBack }: { meal: LoggedMeal; onBack: () => v
     if (!it.name.trim() || it.calories != null) return;
     setEstimating(i);
     try {
-      const est = await s.estimateItem(it.name.trim(), it.amount, it.unit);
+      const est = await s.estimateItem(it.name.trim(), it.amount, it.unit, meal.photoPath);
       update(i, {
         calories: est.calories,
         nutrients: est.nutrients,
@@ -119,7 +119,7 @@ export function MealDetail({ meal, onBack }: { meal: LoggedMeal; onBack: () => v
         items.map(async (it) => {
           if (it.name.trim() && it.calories == null) {
             try {
-              const est = await s.estimateItem(it.name.trim(), it.amount, it.unit);
+              const est = await s.estimateItem(it.name.trim(), it.amount, it.unit, meal.photoPath);
               return { ...it, ...est };
             } catch {
               return it;

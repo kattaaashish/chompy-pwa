@@ -126,23 +126,6 @@ const QUANTITY_SCHEMA = {
   required: ["amount", "unit"],
 };
 
-const EXTRACTION_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    items: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: { item: { type: "string" }, quantity: QUANTITY_SCHEMA },
-        required: ["item", "quantity"],
-      },
-    },
-  },
-  required: ["items"],
-};
-
 const NUTRIENTS_SCHEMA = {
   type: "array",
   items: {
@@ -166,6 +149,31 @@ const ESTIMATION_SCHEMA = {
     nutrients: NUTRIENTS_SCHEMA,
   },
   required: ["calories", "food_group", "nutrients"],
+};
+
+// Extraction + estimation folded into one item — the whole review table comes
+// back from a single LLM call (see extractAndEstimate).
+const COMBINED_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          item: { type: "string" },
+          quantity: QUANTITY_SCHEMA,
+          calories: { type: "number" },
+          food_group: { type: "string", enum: FOOD_GROUPS },
+          nutrients: NUTRIENTS_SCHEMA,
+        },
+        required: ["item", "quantity", "calories", "food_group", "nutrients"],
+      },
+    },
+  },
+  required: ["items"],
 };
 
 // ---------------------------------------------------------------------------
@@ -218,59 +226,31 @@ export interface MealImage {
   mimeType: string;
 }
 
-// ---------------------------------------------------------------------------
-// Extraction (Stage 1).
-// ---------------------------------------------------------------------------
-interface RawExtractedItem {
-  item: string;
-  quantity: Quantity;
-}
+// Combined prompt: identify the items AND estimate each one's nutrition in a
+// single call. Reuses the extraction contract + the estimation instructions so
+// the output matches the two-stage pipeline, just produced in one round-trip.
+const COMBINED_ESTIMATION_INSTRUCTIONS =
+  `For every item you list, also estimate its nutrition for the quantity you assigned:
+- "calories": total kilocalories for that quantity (a number).
+- "food_group": the single food family the item best belongs to, chosen from exactly one of: ${FOOD_GROUP_LIST_TEXT}. Use "other" only when none fit (e.g. water, tea, a mixed dish that isn't dominated by one family).
+- "nutrients": exactly one entry for every one of these nutrients, using its stated unit, and 0 when the food genuinely contains a negligible amount: ${NUTRIENT_LIST_TEXT}. Values are for the quantity you assigned.
+Estimate reasonably; approximate values are expected.`;
 
-function normalizeExtracted(raw: { items?: RawExtractedItem[] }): {
-  item: string;
-  quantity: Quantity;
-}[] {
-  if (!Array.isArray(raw?.items)) return [];
-  return raw.items
-    .map((it) => ({
-      item: typeof it?.item === "string" ? it.item.trim() : "",
-      quantity: {
-        amount: Number(it?.quantity?.amount),
-        unit: typeof it?.quantity?.unit === "string" ? it.quantity.unit.trim() : "",
-      },
-    }))
+const COMBINED_TEXT_SYSTEM = `${EXTRACTION_TEXT_SYSTEM}\n${COMBINED_ESTIMATION_INSTRUCTIONS}`;
+const COMBINED_IMAGE_SYSTEM = `${EXTRACTION_IMAGE_SYSTEM}\n${COMBINED_ESTIMATION_INSTRUCTIONS}\nJudge each portion from the photo (how full the serving looks, the size and number of pieces), not from a default serving size.`;
+
+// Keep only well-formed nutrient rows. Shared by every estimation path.
+function normalizeNutrients(raw: unknown): Nutrient[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
     .filter(
-      (it) => it.item && Number.isFinite(it.quantity.amount) && it.quantity.amount > 0,
-    );
-}
-
-export async function extractItemsFromText(
-  llm: Llm,
-  text: string,
-): Promise<{ item: string; quantity: Quantity }[]> {
-  const raw = await llm.generateJson<{ items: RawExtractedItem[] }>({
-    system: EXTRACTION_TEXT_SYSTEM,
-    content: [{ type: "text", text: `The user ate: ${text}` }],
-    schema: EXTRACTION_SCHEMA,
-  });
-  return normalizeExtracted(raw);
-}
-
-export async function extractItemsFromImage(
-  llm: Llm,
-  base64: string,
-  mimeType: string,
-): Promise<{ item: string; quantity: Quantity }[]> {
-  const content: ContentBlock[] = [
-    { type: "image", source: { type: "base64", media_type: mimeType, data: base64 } },
-    { type: "text", text: "Identify the food items and quantities in this meal." },
-  ];
-  const raw = await llm.generateJson<{ items: RawExtractedItem[] }>({
-    system: EXTRACTION_IMAGE_SYSTEM,
-    content,
-    schema: EXTRACTION_SCHEMA,
-  });
-  return normalizeExtracted(raw);
+      (n) =>
+        n &&
+        typeof n.nutrient_type === "string" &&
+        Number.isFinite(Number(n.value)) &&
+        typeof n.unit === "string",
+    )
+    .map((n) => ({ nutrient_type: n.nutrient_type, value: Number(n.value), unit: n.unit }));
 }
 
 // ---------------------------------------------------------------------------
@@ -311,25 +291,10 @@ export async function estimateNutrition(
       schema: ESTIMATION_SCHEMA,
     });
     const calories = Number(raw?.calories);
-    const nutrients = Array.isArray(raw?.nutrients)
-      ? raw.nutrients
-          .filter(
-            (n) =>
-              n &&
-              typeof n.nutrient_type === "string" &&
-              Number.isFinite(Number(n.value)) &&
-              typeof n.unit === "string",
-          )
-          .map((n) => ({
-            nutrient_type: n.nutrient_type,
-            value: Number(n.value),
-            unit: n.unit,
-          }))
-      : [];
     return {
       calories: Number.isFinite(calories) ? calories : null,
       food_group: isFoodGroup(raw?.food_group) ? raw.food_group : "other",
-      nutrients,
+      nutrients: normalizeNutrients(raw?.nutrients),
       estimationFailed: false,
     };
   } catch (e) {
@@ -338,14 +303,67 @@ export async function estimateNutrition(
   }
 }
 
-export async function buildReviewItem(
+// ---------------------------------------------------------------------------
+// Combined extraction + estimation (Stages 1 & 2 in one call).
+// ---------------------------------------------------------------------------
+interface RawCombinedItem {
+  item: string;
+  quantity: Quantity;
+  calories: number;
+  food_group: string;
+  nutrients: Nutrient[];
+}
+
+function normalizeCombined(raw: { items?: RawCombinedItem[] }): ReviewItem[] {
+  if (!Array.isArray(raw?.items)) return [];
+  const out: ReviewItem[] = [];
+  for (const it of raw.items) {
+    const item = typeof it?.item === "string" ? it.item.trim() : "";
+    const amount = Number(it?.quantity?.amount);
+    const unit = typeof it?.quantity?.unit === "string" ? it.quantity.unit.trim() : "";
+    if (!item || !Number.isFinite(amount) || amount <= 0 || !unit) continue;
+    const calories = Number(it?.calories);
+    out.push({
+      item,
+      quantity: { amount, unit },
+      calories: Number.isFinite(calories) ? calories : null,
+      food_group: isFoodGroup(it?.food_group) ? it.food_group : "other",
+      nutrients: normalizeNutrients(it?.nutrients),
+      // A parsed item missing valid calories = the model skipped its estimate.
+      estimationFailed: !Number.isFinite(calories),
+    });
+  }
+  return out;
+}
+
+// One LLM call that returns the whole review table: items + per-item nutrition.
+// Replaces the extract-then-fan-out-per-item pipeline. On the photo path the
+// plate image is sent exactly once (vs once per item before), so the model also
+// reasons about portions across the whole plate. Throws LlmError on failure —
+// the caller decides how to surface it.
+export async function extractAndEstimate(
   llm: Llm,
-  item: string,
-  quantity: Quantity,
-  image?: MealImage,
-): Promise<ReviewItem> {
-  const est = await estimateNutrition(llm, item, quantity, image);
-  return { item, quantity, ...est };
+  input: { text: string } | { image: MealImage },
+): Promise<ReviewItem[]> {
+  const content: ContentBlock[] = [];
+  let system: string;
+  if ("image" in input) {
+    content.push({
+      type: "image",
+      source: { type: "base64", media_type: input.image.mimeType, data: input.image.base64 },
+    });
+    content.push({ type: "text", text: "Identify the food items in this meal and estimate each one's nutrition." });
+    system = COMBINED_IMAGE_SYSTEM;
+  } else {
+    content.push({ type: "text", text: `The user ate: ${input.text}` });
+    system = COMBINED_TEXT_SYSTEM;
+  }
+  const raw = await llm.generateJson<{ items: RawCombinedItem[] }>({
+    system,
+    content,
+    schema: COMBINED_SCHEMA,
+  });
+  return normalizeCombined(raw);
 }
 
 // ---------------------------------------------------------------------------
