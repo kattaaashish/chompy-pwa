@@ -43,8 +43,8 @@ in `src/store.tsx`, mirroring the old Flutter `_Root`.
   `server.ts` (the read-only tools, built per request), `index.ts` (`/mcp` route).
 - **Frontend → `src/`**: `store.tsx` (state machine + actions), `api.ts` (typed
   client + client retry), `models.ts` (families, nutrient rows, `aggregateItems`),
-  `screens/` (incl. `MealDetail.tsx` = view/edit a saved meal, `MyFood.tsx`,
-  `Home.tsx` = category-grouped "Meals today").
+  `screens/` (incl. `MealDetail.tsx` = view/edit a saved meal, `MyFood.tsx`
+  = Today + "This week" tabs, `Home.tsx` = category-grouped "Meals today").
 
 ## LLM model routing (important)
 - **Logging (`/meal/extract`) → one Opus 4.8 call** (`CHOMPY_LLM_MODEL`): a single
@@ -103,6 +103,11 @@ the URL in `shared/llm.ts`.
 - Home "Meals today" groups meals by category and shows a summary
   (`aggregateItems` in `models.ts`), expandable to items; edit is per underlying
   meal id.
+- `MyFood.tsx` "This week" tab is a **day browser, not an average**: clickable
+  circular chips for the 6 earlier IST days (today filtered out — it's the Today
+  tab), and selecting one renders that day's Today-style breakdown (families
+  eaten + nutrients vs target) from `/nutrition/week`'s per-day `meals`. No
+  cross-day averaging.
 
 ## MCP server (read-only)
 - `/mcp` = stateless Streamable HTTP (JSON responses; GET/DELETE → 405). Uses

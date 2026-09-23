@@ -82,7 +82,13 @@ export const S = {
       ? "You have eaten from all five families today."
       : `You have eaten from ${n} of the five families today.`,
   familiesLineWeek: "How many days you ate from each family.",
+  familiesLineDay: (n: number) =>
+    n === 5
+      ? "Ate from all five families this day."
+      : `Ate from ${n} of the five families this day.`,
   familyEaten: "Eaten today",
+  familyEatenDay: "Eaten",
+  dayNoMeals: "No meals were logged on this day.",
   familyNotThisWeek: "Not this week",
   familyEveryDay: "Every day",
   familyDays: (n: number, of: number) => `${n} of ${of} days`,
@@ -94,8 +100,9 @@ export const S = {
     "banana, mango",
     "curd, milk, cheese",
   ] as const,
-  weekDaysLabel: "Your last seven days",
-  weekDaysExplainer: "A tick means you ate from every family that day.",
+  weekDaysLabel: "Earlier days",
+  weekDaysExplainer: "Tap a day to see it. A tick means every family was eaten that day.",
+  nutritionDay: "Nutrition",
   nutritionToday: "Nutrition today",
   nutritionTodayExplainer:
     "How much of each you have had, out of what you need in a day.",

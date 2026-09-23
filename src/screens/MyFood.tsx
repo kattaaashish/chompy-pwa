@@ -9,10 +9,28 @@ import {
   familiesEatenIn,
   familyOrder,
   totalsFromMeals,
-  averageTotals,
   nutrientRows,
   type NutrientRow,
 } from "../models";
+
+// The IST calendar day today (matches the server's istDayKey), so we can drop
+// today from the week strip — today already lives in the "Today" tab.
+function istTodayKey(): string {
+  const ist = new Date(Date.now() + (5 * 60 + 30) * 60_000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())}`;
+}
+
+// "2026-09-22" -> "Mon, 22 Sep" (rendered in IST so the weekday/day are right).
+function formatDayLabel(date: string): string {
+  const dt = new Date(`${date}T00:00:00+05:30`);
+  return dt.toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Kolkata",
+  });
+}
 
 const FAMILY_INDEX: Record<FoodFamily, number> = {
   grain: 0,
@@ -152,13 +170,24 @@ function NutrientSection({
   );
 }
 
+// The "This week" tab: a day picker over the earlier days (today excluded — it
+// lives in the Today tab). Selecting a day shows that day's own Today-style
+// breakdown (families eaten + nutrients vs target). No averaging across days.
 function WeekView({ week }: { week: { days: DayLedger[]; needs: DailyNeeds | null } | null }) {
-  if (!week) return <p className="body muted" style={{ marginTop: 24 }}>Loading your week…</p>;
+  const [selected, setSelected] = useState<string | null>(null);
 
-  const days = week.days;
-  const daysWith = (f: FoodFamily) =>
-    days.filter((d) => familiesEatenIn(d.meals).has(f)).length;
-  const avg = averageTotals(days.map((d) => totalsFromMeals(d.meals)));
+  if (!week) return <p className="body muted" style={{ marginTop: 24 }}>Loading your days…</p>;
+
+  const todayKey = istTodayKey();
+  const past = week.days.filter((d) => d.date !== todayKey);
+  if (past.length === 0)
+    return <p className="body muted" style={{ marginTop: 24 }}>No earlier days yet.</p>;
+
+  // Selected day, defaulting to the most recent (last in oldest→newest order).
+  const activeDate =
+    selected && past.some((d) => d.date === selected) ? selected : past[past.length - 1].date;
+  const sel = past.find((d) => d.date === activeDate)!;
+  const eaten = familiesEatenIn(sel.meals);
 
   return (
     <>
@@ -166,11 +195,24 @@ function WeekView({ week }: { week: { days: DayLedger[]; needs: DailyNeeds | nul
         <h2 className="title">{S.weekDaysLabel}</h2>
         <p className="body-sm">{S.weekDaysExplainer}</p>
         <div className="row" style={{ marginTop: 12, justifyContent: "space-between" }}>
-          {days.map((d) => {
+          {past.map((d) => {
             const fam = familiesEatenIn(d.meals);
             const all = fam.size === familyOrder.length;
+            const isSel = d.date === activeDate;
             return (
-              <div key={d.date} style={{ textAlign: "center", flex: 1 }}>
+              <button
+                key={d.date}
+                onClick={() => setSelected(d.date)}
+                aria-pressed={isSel}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  cursor: "pointer",
+                  textAlign: "center",
+                  flex: 1,
+                }}
+              >
                 <div
                   style={{
                     width: 34,
@@ -183,44 +225,37 @@ function WeekView({ week }: { week: { days: DayLedger[]; needs: DailyNeeds | nul
                     color: all ? "var(--ground)" : "var(--neutral-700)",
                     fontWeight: 700,
                     fontSize: 14,
+                    boxShadow: isSel ? "0 0 0 2px var(--ground)" : "none",
                   }}
                 >
                   {all ? "✓" : fam.size}
                 </div>
-                <div className="body-sm" style={{ marginTop: 4, fontSize: 11 }}>
+                <div
+                  className="body-sm"
+                  style={{ marginTop: 4, fontSize: 11, fontWeight: isSel ? 700 : 400 }}
+                >
                   {d.date.slice(8)}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </section>
 
-      <section style={{ marginTop: 22 }}>
-        <h2 className="title">{S.familiesLabel}</h2>
-        <p className="body-sm">{S.familiesLineWeek}</p>
-        <div className="stack" style={{ marginTop: 12 }}>
-          {familyOrder.map((f) => {
-            const i = FAMILY_INDEX[f];
-            const n = daysWith(f);
-            const sub =
-              n === 0 ? S.familyNotThisWeek : n === days.length ? S.familyEveryDay : S.familyDays(n, days.length);
-            return (
-              <div className="card between" key={f}>
-                <div className="body" style={{ fontWeight: 600 }}>
-                  {S.familyLabels[i]}
-                </div>
-                <span className={`pill-tag ${n >= 5 ? "" : "muted"}`}>{sub}</span>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <h2 className="title" style={{ marginTop: 24 }}>
+        {formatDayLabel(sel.date)}
+      </h2>
+      {sel.meals.length === 0 && <p className="body-sm">{S.dayNoMeals}</p>}
 
+      <FamilySection
+        title={S.familiesLabel}
+        line={S.familiesLineDay(eaten.size)}
+        renderStatus={(f) => (eaten.has(f) ? { label: S.familyEatenDay, strong: true } : null)}
+      />
       <NutrientSection
-        title={S.nutritionWeek}
-        explainer={S.nutritionWeekExplainer}
-        rows={nutrientRows(avg, week.needs)}
+        title={S.nutritionDay}
+        explainer={S.nutritionTodayExplainer}
+        rows={nutrientRows(totalsFromMeals(sel.meals), week.needs)}
       />
     </>
   );
