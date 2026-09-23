@@ -9,7 +9,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, type RawInput } from "./api";
 import type { DayLedger, FoodItem } from "./models";
 
 export type Screen =
@@ -48,6 +48,7 @@ interface State {
   food: FoodScreen;
   reviewItems: FoodItem[];
   photoPath: string | null; // R2 key of the plate photo for the in-progress meal
+  rawInput: RawInput | null; // what was entered + the pre-edit review table (for MCP)
   category: string; // lowercase backend category
   extractedCount: number;
   savedCategory: string;
@@ -71,6 +72,7 @@ const initial: State = {
   food: "none",
   reviewItems: [],
   photoPath: null,
+  rawInput: null,
   category: "snacks",
   extractedCount: 0,
   savedCategory: "",
@@ -242,7 +244,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // ── Food flow ──
       openLogMeal() {
         saveTokenRef.current = null; // fresh meal -> fresh idempotency key
-        set({ food: "mode", reviewItems: [], photoPath: null, busyError: null });
+        set({ food: "mode", reviewItems: [], photoPath: null, rawInput: null, busyError: null });
       },
       chooseType() {
         set({ food: "text" });
@@ -257,6 +259,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             food: "review",
             reviewItems: r.items,
             photoPath: null, // typed meal: no photo
+            rawInput: { mode: "text", text, extractedItems: r.items },
             category: r.defaultCategory,
             extractedCount: r.items.length,
           });
@@ -275,6 +278,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             food: "review",
             reviewItems: r.items,
             photoPath: r.photoPath ?? null,
+            rawInput: { mode: "photo", extractedItems: r.items },
             category: r.defaultCategory,
             extractedCount: r.items.length,
           });
@@ -323,6 +327,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             state.reviewItems,
             saveTokenRef.current,
             state.photoPath,
+            state.rawInput,
           );
           // Fun fact (never a hard failure).
           let fact = "";

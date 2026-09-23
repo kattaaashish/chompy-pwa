@@ -21,8 +21,9 @@ backend (both deleted).
   remote uses SSH host `github-personal`).
 
 ## Architecture
-One Worker (`worker/index.ts`, Hono) serves the built PWA via the `ASSETS` binding
-**and** the `/api/*` JSON API. `app.all("*")` falls back to `ASSETS.fetch` (SPA).
+One Worker (`worker/index.ts`, Hono) serves the built PWA via the `ASSETS` binding,
+the `/api/*` JSON API, **and a read-only MCP server** (`/mcp` + OAuth, see below).
+`app.all("*")` falls back to `ASSETS.fetch` (SPA).
 The frontend is a **state-machine SPA with no URL routing** — navigation is state
 in `src/store.tsx`, mirroring the old Flutter `_Root`.
 
@@ -34,9 +35,12 @@ in `src/store.tsx`, mirroring the old Flutter `_Root`.
   - `requirements.ts` — ICMR-NIN RDA → personalized daily target (`dailyRequirement`).
   - `validation.ts` — profile/phone/OTP validation.
   - `llm.ts` — Claude client: `createLlm(apiKey, model)`, retries, `effort` gating.
-- **Worker glue → `worker/lib/`** (`env`, `auth` JWT, `otp` KV, `http`,
-  `requirement`) and **`worker/routes/`** (`auth`, `profile`, `meals`, `nutrition`).
-  DB in `worker/db/` (Drizzle schema + client).
+- **Worker glue → `worker/lib/`** (`env`, `auth` JWT, `otp` KV, `login` = shared
+  phone+OTP login, `http`, `requirement`) and **`worker/routes/`** (`auth`,
+  `profile`, `meals`, `nutrition`). DB in `worker/db/` (Drizzle schema + client).
+- **MCP server → `worker/mcp/`**: `oauth.ts` (OAuth 2.1 AS: metadata, dynamic
+  registration, phone+OTP login page, PKCE token endpoint; state in `OTP_KV`),
+  `server.ts` (the read-only tools, built per request), `index.ts` (`/mcp` route).
 - **Frontend → `src/`**: `store.tsx` (state machine + actions), `api.ts` (typed
   client + client retry), `models.ts` (families, nutrient rows, `aggregateItems`),
   `screens/` (incl. `MealDetail.tsx` = view/edit a saved meal, `MyFood.tsx`,
@@ -91,6 +95,27 @@ the URL in `shared/llm.ts`.
   (`aggregateItems` in `models.ts`), expandable to items; edit is per underlying
   meal id.
 
+## MCP server (read-only)
+- `/mcp` = stateless Streamable HTTP (JSON responses; GET/DELETE → 405). Uses
+  `@modelcontextprotocol/sdk` `WebStandardStreamableHTTPServerTransport` + `zod`.
+- Tools: `get_profile`, `list_meals`, `get_meal`, `get_meal_photo` (image block),
+  `get_nutrition_summary`, `get_recommendations`, `get_reference`, plus ChatGPT's
+  `search`/`fetch`. **No write tools — keep it that way.**
+- **Token audiences**: OAuth-minted tokens carry `aud:"mcp"`; `requireAuth` (the
+  app API) rejects them, `/mcp` accepts both app and mcp tokens. Don't loosen this.
+- **Raw input**: `meals.input_mode/input_text/extracted_items` (migration 0004)
+  are written by `/meal/log` from the client's `input` field (store keeps
+  `rawInput` from extract → save). Best-effort; never blocks a save. Older meals
+  have nulls.
+- Login page reuses `worker/lib/login.ts` (same master OTP rules as the app).
+- **Security caveat (accepted in dev, MUST fix before real users):** `/mcp` +
+  OAuth is a *public, auto-discoverable* surface, and `/oauth/register` is open.
+  Combined with `MASTER_OTP` (`123456`) verifying ANY phone, anyone on the
+  internet can currently mint a read token for a family's whole log + photos.
+  Also: MCP access tokens are 30 days with no revocation endpoint. Before going
+  live: wire real SMS (retire the master OTP on the OAuth path), rate-limit
+  `/oauth/authorize`, and shorten/allow revocation of `aud:"mcp"` tokens.
+
 ## Auth / login
 - Real SMS is **stubbed** — code only logged. **`MASTER_OTP` var (`123456`)**
   verifies ANY phone in any environment → the family's login. Shared password; keep
@@ -112,6 +137,8 @@ Deploy: `npm run deploy`. Typecheck: `npm run typecheck`.
 - Deleting/removing individual saved meals (only edit exists; no delete endpoint).
 - Parent/child role split (single account type today).
 - Automated tests (none). Verify manually via `wrangler dev` + curl, or the live URL.
+- MCP: rate-limiting the `/oauth/authorize` login form; photo downscaling for
+  `get_meal_photo` (photos > 5 MB are described, not returned).
 
 ## Gotchas
 - Don't send `effort` to Haiku — it 400s. `shared/llm.ts` handles it; keep it that way.

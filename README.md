@@ -135,15 +135,71 @@ wrangler secret put OTP_PEPPER
 | `/api/profile` | save profile + first body measurement |
 | `/api/meal/extract` | photo/text → items → per-item nutrition (review table) |
 | `/api/nutrition/estimate` | re-estimate one item after an edit |
-| `/api/meal/log` | save meal + items; idempotent via `clientToken` |
+| `/api/meal/log` | save meal + items (+ raw `input` for MCP); idempotent via `clientToken` |
 | `/api/meal/update` | edit a saved meal (owner-checked); recomputes totals |
 | `/api/meal/fact` | one kid-friendly fun fact for a meal |
 | `/api/nutrition/day` | a day's meals + totals + daily requirement (IST) |
 | `/api/nutrition/week` | last 7 IST days + requirement |
 | `GET /api/photo/*` | serve a meal photo (owner-only) |
 | `GET /api/health` | health check |
+| `/mcp`, `/oauth/*`, `/.well-known/oauth-*` | read-only MCP server + its OAuth login (see below) |
 
 Error envelope: `{ error: { code, message, fieldErrors?, retryable? } }`.
+
+---
+
+## MCP server (read-only) — use your data from Claude / ChatGPT / any harness
+
+The Worker also exposes a **read-only [MCP](https://modelcontextprotocol.io) server**
+at **`/mcp`** (Streamable HTTP, stateless JSON). It surfaces everything the app
+stores for the signed-in account — nothing else, and no tool can write.
+
+**Connect** by adding `https://chompy-pwa.ak-projects.workers.dev/mcp` as a custom
+connector / remote MCP server. The client discovers OAuth automatically, opens a
+tiny login page in the browser (phone number + OTP — the same `123456` master
+code as the app), and receives a token that is scoped to **`aud: "mcp"`**, so even
+if a harness leaks it, it can only read via `/mcp` and is rejected by `/api/*`.
+
+| Client | How |
+|---|---|
+| Claude.ai / Claude Desktop | Settings → Connectors → *Add custom connector* → paste the `/mcp` URL |
+| ChatGPT | Settings → Connectors (Developer mode) → *Create* → paste the `/mcp` URL. `search` + `fetch` tools are included for ChatGPT's connector contract |
+| Claude Code | `claude mcp add --transport http chompy https://chompy-pwa.ak-projects.workers.dev/mcp` (then `/mcp` → authenticate) |
+| Anything with a bearer header | Sign in via `POST /api/auth/verify-otp` and send `Authorization: Bearer <access_token>` — app tokens are accepted by `/mcp` too |
+
+**Tools**
+
+| Tool | Returns |
+|---|---|
+| `get_profile` | child profile, height/weight history, personalised daily requirement (ICMR-NIN) |
+| `list_meals` | meals in an IST date range (default last 7 days) with items, nutrition, totals and **raw input** |
+| `get_meal` | one meal in full |
+| `get_meal_photo` | the plate photo as an image block (photo-logged meals) |
+| `get_nutrition_summary` | day-by-day totals + % of requirement, food-group / GO-GROW-GLOW breakdown, averages |
+| `get_recommendations` | the evening dinner suggestions per day |
+| `get_reference` | nutrient keys/units, food groups, and how Chompy calculates |
+| `search` / `fetch` | ChatGPT-style search over meals by food, text or date; fetch a meal document |
+
+Per meal, `input` carries **what was entered** — `mode` (`text`/`photo`), the typed
+`text`, `has_photo` — and **what Chompy first made of it**: `extracted_items`, the
+review table exactly as the LLM produced it before the child edited it. `items`
+are the confirmed, saved rows. Meals saved before this existed have `mode: null`.
+
+Endpoints behind the scenes: `/.well-known/oauth-protected-resource[/mcp]`,
+`/.well-known/oauth-authorization-server`, `/oauth/register` (dynamic client
+registration), `/oauth/authorize` (login page), `/oauth/token` (PKCE S256 required,
+refresh tokens rotate). Codes/clients/refresh tokens live in `OTP_KV`. Code:
+`worker/mcp/` (`oauth.ts`, `server.ts`, `index.ts`).
+
+Quick local check:
+
+```bash
+TOK=$(curl -s localhost:8787/api/auth/verify-otp -H 'content-type: application/json' \
+  -d '{"phone":"9876543210","code":"123456"}' | jq -r .session.access_token)
+curl -s localhost:8787/mcp -H "authorization: Bearer $TOK" -H 'content-type: application/json' \
+  -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | jq '.result.tools[].name'
+```
 
 ---
 

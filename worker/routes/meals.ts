@@ -9,7 +9,7 @@ import type { Env, Vars } from "../lib/env";
 import { apiError } from "../lib/http";
 import { requireAuth } from "../lib/auth";
 import { db } from "../db/client";
-import { mealItems, meals } from "../db/schema";
+import { mealItems, meals, type ExtractedItem } from "../db/schema";
 import { createLlm, DEFAULT_FAST_MODEL } from "../../shared/llm";
 import { LlmError } from "../../shared/llm";
 import {
@@ -211,6 +211,35 @@ async function computeLedger(
   };
 }
 
+// The raw entry behind a meal — what the child typed (or that it was a photo)
+// plus the review table exactly as /meal/extract produced it, before edits.
+// Best-effort and never a reason to reject the save: malformed pieces are dropped.
+// Stored for the read-only MCP server (worker/mcp), not used by the PWA itself.
+const MAX_INPUT_TEXT = 2000;
+function parseRawInput(
+  raw: unknown,
+  photoPath: string | null,
+): { mode: "text" | "photo" | null; text: string | null; extractedItems: ExtractedItem[] | null } {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  let mode: "text" | "photo" | null =
+    r.mode === "text" || r.mode === "photo" ? r.mode : photoPath ? "photo" : null;
+  const text =
+    mode === "text" && typeof r.text === "string" && r.text.trim()
+      ? r.text.trim().slice(0, MAX_INPUT_TEXT)
+      : null;
+  if (mode === "text" && !text) mode = null;
+
+  let extractedItems: ExtractedItem[] | null = null;
+  if (Array.isArray(r.extractedItems)) {
+    extractedItems = [];
+    for (const it of r.extractedItems.slice(0, 50)) {
+      const res = validateItem(it);
+      if (res.ok && res.value) extractedItems.push(res.value);
+    }
+  }
+  return { mode, text, extractedItems };
+}
+
 // Stage 4 — confirm & save. Idempotent via clientToken.
 mealRoutes.post("/meal/log", requireAuth, async (c) => {
   const userId = c.get("userId");
@@ -255,6 +284,7 @@ mealRoutes.post("/meal/log", requireAuth, async (c) => {
     typeof body?.loggedAt === "string" && !Number.isNaN(Date.parse(body.loggedAt))
       ? new Date(body.loggedAt).toISOString()
       : new Date().toISOString();
+  const input = parseRawInput(body?.input, photoPath);
 
   const totals = sumNutrition(values);
   const mealId = crypto.randomUUID();
@@ -271,6 +301,9 @@ mealRoutes.post("/meal/log", requireAuth, async (c) => {
         totalNutrients: totals.nutrients,
         clientToken,
         photoPath,
+        inputMode: input.mode,
+        inputText: input.text,
+        extractedItems: input.extractedItems,
       })
       .run();
   } catch (e) {

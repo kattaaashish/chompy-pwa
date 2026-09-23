@@ -99,6 +99,24 @@ export interface ExtractResult {
   photoPath?: string;
 }
 
+// The raw entry behind an in-progress meal: how it was entered, the typed text
+// (text mode), and the review items exactly as the server first returned them.
+export interface RawInput {
+  mode: "text" | "photo";
+  text?: string;
+  extractedItems: FoodItem[];
+}
+
+function itemToWire(i: FoodItem) {
+  return {
+    name: i.name,
+    quantity: { amount: i.amount, unit: i.unit },
+    calories: i.calories,
+    food_group: i.foodGroup,
+    nutrients: i.nutrients,
+  };
+}
+
 export const api = {
   async requestOtp(phone: string): Promise<string | null> {
     const j = await post("/auth/request-otp", { phone });
@@ -272,20 +290,24 @@ export const api = {
     items: FoodItem[],
     clientToken: string,
     photoPath?: string | null,
+    input?: RawInput | null,
   ): Promise<void> {
     await post(
       "/meal/log",
       {
         category,
-        items: items.map((i) => ({
-          name: i.name,
-          quantity: { amount: i.amount, unit: i.unit },
-          calories: i.calories,
-          food_group: i.foodGroup,
-          nutrients: i.nutrients,
-        })),
+        items: items.map(itemToWire),
         clientToken,
         photoPath: photoPath ?? null,
+        // What was entered + the review table as first produced (pre-edit).
+        // Persisted for the read-only MCP server; never blocks the save.
+        input: input
+          ? {
+              mode: input.mode,
+              text: input.text ?? null,
+              extractedItems: input.extractedItems.map(itemToWire),
+            }
+          : null,
       },
       token,
     );

@@ -17,7 +17,16 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { Nutrient } from "../../shared/nutrition";
+import type { FoodGroup, Nutrient, Quantity } from "../../shared/nutrition";
+
+// One row of the review table as the app first produced it (pre-edit).
+export interface ExtractedItem {
+  name: string;
+  quantity: Quantity;
+  calories: number | null;
+  food_group: FoodGroup;
+  nutrients: Nutrient[];
+}
 
 // One row per account (phone-based). Height/weight live in body_measurements.
 export const profiles = sqliteTable("profiles", {
@@ -80,6 +89,16 @@ export const meals = sqliteTable(
     clientToken: text("client_token"),
     // R2 key of the plate photo (photo mode only); null for typed meals.
     photoPath: text("photo_path"),
+    // Raw input + the app's first-pass calculation, kept for the read-only MCP
+    // server so an external assistant can see exactly what was entered and what
+    // Chompy made of it before the child edited the review table.
+    //   input_mode      "text" | "photo" (null for meals saved before this existed)
+    //   input_text      the typed sentence (text mode only)
+    //   extracted_items the LLM's extraction + per-item estimate as returned by
+    //                   /meal/extract, i.e. before any review edits
+    inputMode: text("input_mode", { enum: ["text", "photo"] }),
+    inputText: text("input_text"),
+    extractedItems: text("extracted_items", { mode: "json" }).$type<ExtractedItem[]>(),
     createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
   },
   (t) => ({

@@ -1,6 +1,11 @@
 // Session auth — JWT (HS256, jose) signed with the JWT_SECRET worker secret.
 // Replaces Supabase Auth: a single self-issued token identifies the account.
 // Family-only app, so one long-lived token (30 days) — no refresh dance.
+//
+// Audiences: tokens minted for the app carry no `aud`; tokens minted by the MCP
+// OAuth flow carry aud "mcp". The app API (`requireAuth`) rejects "mcp" tokens
+// so a token handed to an external AI harness can only ever read via /mcp, not
+// write via /api. The MCP endpoint accepts both (your own app token works too).
 
 import { SignJWT, jwtVerify } from "jose";
 import type { Context, MiddlewareHandler } from "hono";
@@ -9,31 +14,55 @@ import { apiError } from "./http";
 
 const ISSUER = "chompy";
 const TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+export const TOKEN_TTL_SECONDS = TTL_SECONDS;
+
+export const MCP_AUDIENCE = "mcp";
 
 function secretKey(env: Env): Uint8Array {
   return new TextEncoder().encode(env.JWT_SECRET);
 }
 
-export async function signToken(env: Env, userId: string): Promise<string> {
-  return await new SignJWT({})
+export async function signToken(
+  env: Env,
+  userId: string,
+  opts: { audience?: string } = {},
+): Promise<string> {
+  let jwt = new SignJWT({})
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuer(ISSUER)
     .setIssuedAt()
-    .setExpirationTime(`${TTL_SECONDS}s`)
-    .sign(secretKey(env));
+    .setExpirationTime(`${TTL_SECONDS}s`);
+  if (opts.audience) jwt = jwt.setAudience(opts.audience);
+  return await jwt.sign(secretKey(env));
 }
 
-export async function verifyToken(env: Env, token: string): Promise<string | null> {
+export interface TokenClaims {
+  userId: string;
+  audience: string[];
+}
+
+// Verify signature/issuer/expiry and return the claims we care about.
+export async function verifyTokenClaims(env: Env, token: string): Promise<TokenClaims | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey(env), { issuer: ISSUER });
-    return typeof payload.sub === "string" ? payload.sub : null;
+    if (typeof payload.sub !== "string") return null;
+    const aud = payload.aud;
+    const audience = Array.isArray(aud) ? aud : typeof aud === "string" ? [aud] : [];
+    return { userId: payload.sub, audience };
   } catch {
     return null;
   }
 }
 
-function bearer(c: Context): string | null {
+// App-facing verification: any valid token that is NOT an MCP (read-only) token.
+export async function verifyToken(env: Env, token: string): Promise<string | null> {
+  const claims = await verifyTokenClaims(env, token);
+  if (!claims || claims.audience.includes(MCP_AUDIENCE)) return null;
+  return claims.userId;
+}
+
+export function bearer(c: Context): string | null {
   const h = c.req.header("Authorization") ?? "";
   return h.startsWith("Bearer ") ? h.slice(7) : null;
 }

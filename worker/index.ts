@@ -1,5 +1,5 @@
-// Chompy Worker — one entry point serves both the API (/api/*) and the built PWA
-// (static assets, via the ASSETS binding). All state is on Cloudflare: D1, R2, KV.
+// Chompy Worker — one entry point serves the API (/api/*), the read-only MCP
+// server (/mcp + OAuth), and the built PWA (static assets, via the ASSETS binding). All state is on Cloudflare: D1, R2, KV.
 // A scheduled (cron) handler sends meal-logging reminders via Web Push.
 
 import { Hono } from "hono";
@@ -16,6 +16,7 @@ import { db } from "./db/client";
 import { pushSubscriptions } from "./db/schema";
 import { sendPush } from "./lib/webpush";
 import { runDailyRecommendations } from "./lib/recommend";
+import { mcp } from "./mcp";
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
@@ -32,6 +33,10 @@ api.route("/", recommendation);
 api.get("/health", (c) => c.json({ ok: true }));
 
 app.route("/api", api);
+
+// Read-only MCP server (+ its OAuth login) for external AI harnesses:
+// /mcp, /oauth/*, /.well-known/oauth-*. See worker/mcp/.
+app.route("/", mcp);
 
 // Anything not under /api and not a matched static asset: hand back to ASSETS,
 // which returns index.html (SPA fallback) so the client app always boots.
